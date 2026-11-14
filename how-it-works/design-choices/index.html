@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Design choices · Spek</title>
+    <meta name="description" content="Why Spek is built the way it is: the alternatives that were weighed for the election, settlement, the clock, cryptography and the network, and why each was set aside.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Design choices</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    The <a href="/whitepaper/">white paper</a> describes what Spek is. This page collects why it is built that way:
+    the alternatives that were weighed, what earlier designs got wrong, and what was left out on purpose.
+  </p>
+
+  <h2 id="election">The election</h2>
+
+  <h3 id="no-vrf">Hash chains instead of a VRF</h3>
+  <p>
+    A per-slot draw has to be secret until used, unique per height and committed before the beacon it is drawn against
+    exists. A verifiable random function built on a unique signature would give the first two, but no deployable
+    post-quantum VRF exists, and SQIsign signatures are randomised, so they are not unique. Spek builds the value from
+    BLAKE3 hash chains instead, so the draw's secrecy and uniqueness rest on BLAKE3 alone. That uniqueness is the
+    property most worth outside review: X-VRF, a related hash-based construction for proof-of-stake election, was later
+    broken on exactly that property.
+  </p>
+
+  <h3 id="seed">What the election seed may contain</h3>
+  <p>
+    An earlier design seeded later draws from the parent block's full hash. A block producer can vary that hash freely,
+    by re-signing or re-ordering its own block, so it could steer later draws. A later rule scored each slot directly
+    from the seed chain and the miner's key; the winner of one slot then knew the next seed and could fund, in its own
+    block, whichever pre-generated key drew best next. Spek's election seed now binds only the parent's election seed, the winner's key
+    and its committed slot secret, scores are drawn against a beacon read two epochs back, and stake must exist a full
+    epoch before that beacon. Together these close both channels.
+  </p>
+
+  <h3 id="identity">Why block identity leaves the signature out</h3>
+  <p>
+    Anyone holding a SQIsign signature can derive another valid signature over the same bytes. A block hash that
+    covered the signature could therefore be changed by any relay, splitting one block into many. Block and
+    transaction identities cover everything except signatures, and the merkle root commits to the exact transaction
+    witnesses mined.
+  </p>
+
+  <h3 id="beacon-withholding">A residual that was measured and accepted</h3>
+  <p>
+    The miner at a beacon height can withhold its block and let the runner-up set the beacon instead, and it can
+    evaluate both choices because it holds its own future slot secrets. Simulation puts the gain at 1.9–3.0% more of
+    its own wins per beacon it controls, 0.3–0.6% averaged over all epochs, with no compounding. That bound was judged
+    small enough to accept rather than add machinery to remove it.
+  </p>
+
+  <h3 id="equivocation">Equivocation forfeits the slot</h3>
+  <p>
+    When one key signs two different headers for the same slot, the slot is cancelled for that key rather than one
+    header being picked. Any rule that picks one variant is either unbounded, because a miner can flood variants, or
+    depends on arrival order, which differs between nodes and can split the network. Forfeiting is bounded and gives
+    every node the same answer.
+  </p>
+
+  <h3 id="top-five">Five candidates held, three fetched</h3>
+  <p>
+    Holding five candidates while fetching bodies for three lets rank 3 be committed after up to two same-slot
+    disqualifications, and leaves two backups for a winner whose machine died after announcing.
+  </p>
+
+  <h2 id="settlement">Settlement</h2>
+
+  <h3 id="no-rollback-cap">No rollback limit shorter than the pin</h3>
+  <p>
+    A rolling rollback limit was designed and dropped. As drafted, both sides of a long network partition would each have locked in their own history and refused
+    the other forever, and a node surrounded by an attacker's peers would have locked in the attacker's chain. The
+    election did not need it.
+  </p>
+
+  <h3 id="density-rule">No early-window density rule for deep forks</h3>
+  <p>
+    Comparing deep forks by how densely each branch filled the window just after the fork point (the Ouroboros Genesis
+    rule) was evaluated and not adopted. Ordinary honest null blocks let a branch built from dormant stake win some
+    early window with far less than the modelled attacker share.
+  </p>
+
+  <h3 id="no-gadget">No finality gadget</h3>
+  <p>
+    Settlement is by confirmations sized to an attacker share, then the restoration pin and the checkpoint barrier. A
+    committee-certificate design that needs no slashing is a possible later upgrade, which every operator would adopt
+    or decline like any other; nothing like it is in the launch release.
+  </p>
+
+  <h3 id="checkpoints">Why checkpoints are permanent</h3>
+  <p>
+    Unbonded stake cannot stop signing after the fact: a key that held stake at a fork point can sign a branch from
+    that point at any later time, even after its owner sold the coins. Only checkpoints bound that for a node with no
+    history of its own, so they are never retired. See <a href="/how-it-works/settlement/#checkpoints">Settlement</a>.
+  </p>
+
+  <h3 id="outage-recovery">Why multi-slot outage recovery is manual</h3>
+  <p>
+    If every node misses two or more slot boundaries at once, an operator fills the gap with null blocks through an RPC
+    call. It cannot be automatic, because a single node cannot tell "the whole network was down" from "I was down".
+  </p>
+
+  <h2 id="time">Time</h2>
+
+  <h3 id="raw-clock">Why the raw hardware clock</h3>
+  <p>
+    The system's monotonic clock is adjusted by the host's NTP daemon and follows whatever that daemon is told. A
+    measured on-path NTP offset walked an earlier design a full slot in about six minutes while its drift gauge read
+    zero. Spek now carries verified time forward on the raw hardware oscillator and corrects it by a rate it learns
+    from Roughtime syncs, with the rate change per sync and the total rate both clamped.
+  </p>
+
+  <h3 id="one-vote">One vote per operator</h3>
+  <p>
+    Counting one vote per server address would let one party buy votes by running more servers. Each operator, counted
+    by who holds the keys, casts one vote; extra servers under one operator only add availability.
+  </p>
+
+  <h3 id="no-nts">No NTS</h3>
+  <p>
+    Authenticated NTP (NTS) was not used because the library available for it has a licence incompatible with Spek's.
+  </p>
+
+  <h2 id="crypto">Cryptography</h2>
+
+  <h3 id="sqisign">SQIsign rather than ML-DSA</h3>
+  <p>
+    SQIsign was chosen for size: a 200-byte signature and an 83-byte key, against roughly 2.4 KB and 1.3 KB for the
+    standardised ML-DSA. Every header and every spend carries a signature, so that size difference sets block capacity
+    and bandwidth. The cost is a younger security assumption with less cryptanalytic history, and a scheme that is not
+    yet a NIST standard. See <a href="/how-it-works/cryptography/">Cryptography</a>.
+  </p>
+
+  <h3 id="one-scheme">One scheme per output form</h3>
+  <p>
+    There is no per-transaction menu of algorithms and no negotiation. At any height exactly one scheme is valid for a
+    given output form or header version, which rules out downgrade and algorithm-confusion attacks.
+  </p>
+
+  <h3 id="das">Data-availability sampling removed</h3>
+  <p>
+    Erasure-coded block chunks with data-availability sampling were built and then removed before launch. The main
+    reason was cryptographic: the standard commitment scheme for sampling, KZG, is not post-quantum safe. It also did
+    not fit the network: blocks travel in full, and sampling pays off only with light clients and large blocks, which
+    Spek does not have. No header field is reserved for it, so bringing it back would be a header-version upgrade with
+    a hash-based commitment.
+  </p>
+
+  <h3 id="verify-cache">A cache that cannot change a verdict</h3>
+  <p>
+    The signature cache stores only signatures that verified. A failure is never cached, so the cache can make a valid
+    signature cheaper to check again but can never turn an invalid one valid.
+  </p>
+
+  <h2 id="network">The network</h2>
+
+  <h3 id="quic">QUIC only</h3>
+  <p>
+    Every connection is QUIC, which brings TLS 1.3 and stream multiplexing in one transport. Hosts behind networks that
+    block UDP, roughly 5–15% of them, cannot connect; that exclusion was accepted. QUIC connection migration is turned
+    off so that limits and bans keyed by IP address stay meaningful.
+  </p>
+
+  <h3 id="compact-nonce">A server-chosen nonce for compact blocks</h3>
+  <p>
+    Compact blocks name transactions by short ids. If those ids were keyed by the block hash alone, an attacker could
+    search offline for transactions whose short ids collide and force every node to fall back to the full block at
+    once. The serving peer picks a fresh nonce for each reply, so no collision can be prepared in advance.
+  </p>
+
+  <h3 id="scheduler">The current slot comes first</h3>
+  <p>
+    Validating the current slot's best block is what keeps the network producing blocks, so it has a reserved lane
+    ahead of download, catch-up and mempool work. An earlier ordering that strictly ranked catch-up below live
+    propagation instead produced deep self-forks under load, so the two now share one priority.
+  </p>
+
+  <h3 id="silence">Silence is not evidence</h3>
+  <p>
+    Null blocks are silent and deterministic, so nodes can agree on a chain while the network underneath is unhealthy,
+    and a peer that sends nothing may simply have nothing to send. Rules that infer misbehaviour from missing data must
+    first establish that the data existed.
+  </p>
+
+  <h3 id="ibd-peers">A download peer minimum nobody can lower</h3>
+  <p>
+    A node starts a full download only with 8 sync peers, or 1 if a built-in bootstrap node is connected. No flag or RPC
+    lowers that, so an attacker who surrounds a node with its own peers cannot talk it into syncing from them alone.
+  </p>
+
+  <h3 id="mining-during-download">Mining never pauses for a download</h3>
+  <p>
+    If a candidate chain could pause mining, an attacker could advertise a fake heavy chain to halt honest block
+    production. Mining on the main chain continues unconditionally, and a better chain, once downloaded, replaces the
+    node's own blocks in the normal way.
+  </p>
+
+  <h2 id="node">The node</h2>
+
+  <h3 id="no-flush">No disk flush per block</h3>
+  <p>
+    Blocks are written in atomic batches without a disk flush for each one, because a disk stall on the commit path
+    would delay the node's part in propagating the next block. Durability is recovered at checkpoint boundaries.
+  </p>
+
+  <h3 id="universal-tuning">No limit sized from one machine</h3>
+  <p>
+    No constant is sized from any one machine. Every budget has an operator setting, a safe default and a hard
+    correctness floor. The one benchmark-derived consensus constant, the weight of Level V witness bytes, is a ratio
+    between two algorithms measured on the same host, taken at its worst case across backends.
+  </p>
+
+  <h2 id="governance">Governance</h2>
+
+  <h3 id="no-signalling">No version-bit signalling</h3>
+  <p>
+    Bitcoin-style version bits coordinate soft forks by counting miners' signals. In Spek a slot winner's signal would
+    be a weak readiness measure that a winner could game. Upgrades activate at a fixed height instead. If a soft fork
+    ever needs on-chain coordination, it will be designed for Spek's election, preferably with guaranteed eventual
+    activation.
+  </p>
+
+  <h2 id="left-out">Left out on purpose</h2>
+  <ul>
+    <li>
+      <strong>SPV proofs for light clients.</strong> The merkle tree's domain separation, their prerequisite, is in
+      place; the wire hardening they need is not done.
+    </li>
+    <li><strong>Data-availability sampling</strong>, for the reasons above.</li>
+    <li><strong>On-chain soft-fork signalling</strong>, for the reasons above.</li>
+    <li><strong>NTS</strong>, for the licence reason above.</li>
+    <li><strong>Native IPv6</strong> at launch.</li>
+    <li><strong>Verification of a UTXO snapshot after sync.</strong></li>
+    <li>
+      <strong>A penalty for signing on two parents.</strong> A block's score does not depend on its parent, so signing
+      on two parents gains nothing a penalty would remove.
+    </li>
+  </ul>
+
+  <aside class="callout callout-why" role="note">
+  <p class="callout-title">Where this page comes from</p>
+  
+    <p>
+      Every choice here is reflected in the <a href="/whitepaper/">white paper</a>. Open problems are on the
+      <a href="/how-it-works/limitations/">Limitations</a> page.
+    </p>
+  
+</aside>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/settlement/" rel="prev">Previous: Settlement</a>
+    <a href="/how-it-works/glossary/" rel="next">Next: Glossary</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

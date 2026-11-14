@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>White paper v1.0 · Spek</title>
+    <meta name="description" content="The Spek technical white paper: timeslots and the verified clock, the secret per-slot election, eligibility, cryptography, settlement, threat model and known limitations.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap longform">
+      
+  <div class="doc-stamp" data-numbers="exempt" data-document="whitepaper" data-pinned="true">
+  <p>
+    <strong>Version 1.0</strong> · 
+    Rendered from <a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/WHITEPAPER.md"><code>WHITEPAPER.md</code></a> in the node repository
+  </p>
+  <p class="doc-stamp-hash">Source SHA-256 <code>b9090f9329a2f860403f815c78ca90725e80cb06a4e067780494716991a8040a</code></p>
+</div>
+
+  <p class="doc-actions">
+    The reasons behind the design are on <a href="/how-it-works/design-choices/">Design choices</a>.
+    To save a PDF, print this page; the print layout keeps the version stamp.
+  </p>
+  <article class="document"><h1 id="spek">Spek</h1>
+<p><strong>A post-quantum, unbonded proof-of-stake ledger with a secret, ungrindable election every 30 seconds, and no energy race.</strong></p>
+<p><em>Technical white paper, November 2026. Describes the reference implementation (Rust, MIT / Apache-2.0). Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+<blockquote>
+<p><strong>Two disclosures before anything else.</strong></p>
+<ol>
+<li><strong>SQIsign is not a NIST standard.</strong> It is a candidate in NIST's additional post-quantum signature process (advanced to Round 3 in May 2026, with evaluation expected to run about two years). "NIST security level 1" and "level 5" below name the security <em>categories</em> the parameter sets target, not approvals. NIST's finalised post-quantum signature standards (ML-DSA, SLH-DSA) and the selected FN-DSA are different schemes, and Spek uses none of them.</li>
+<li><strong>The code has been built and audited only with AI models (Claude).</strong> The founders used Claude AI models to build and audit Spek. No independent human security audit, and no review by a cryptographer or by the SQIsign authors, has taken place before launch. That covers the Rust implementation, the vendored SQIsign and RandomX C code, and the FFI boundary between them. Anthropic, the maker of Claude, is not a partner in this project and does not endorse it.</li>
+</ol>
+</blockquote>
+<hr>
+<h2 id="abstract">Abstract<a class="heading-anchor" href="#abstract" aria-label="Link to &quot;Abstract&quot;">#</a></h2>
+<p>Spek is a blockchain ledger in which time, not computing work, schedules blocks. The clock is divided into 30-second slots counted from a genesis timestamp, and every slot gets exactly one block. Each eligible stake output gets one secret draw per slot: a hash that only the key's owner can compute, over inputs that were all fixed before the randomness it is drawn against existed. The highest draw whose block is valid wins the slot. Nobody can predict the winner before its block header is published, and nobody can improve a draw by trying again, because there is nothing to try again. If no valid candidate arrives, every node builds the same <em>null block</em>, a block with no transactions, so the chain never stalls.</p>
+<p>Taking part costs a held balance, not a power bill. After a 45-day launch phase, a key is eligible when its stake address holds one output worth at least 80% of the block reward, created at least a day earlier. Nothing is locked and nothing is slashed: the output is an ordinary coin, and spending it ends eligibility. During the launch phase, when nobody holds coins yet, eligibility is bought with RandomX computation instead: one recorded ticket per key per 3-day round.</p>
+<p>Every signature is SQIsign, a compact post-quantum scheme, and every hash is BLAKE3. Public keys stay hidden behind hashes until coins are spent. Nodes take their time from an authenticated Roughtime quorum rather than the host clock. Transactions settle by confirmations sized to an assumed attacker share, and checkpoints bound how far history can be rewritten. Supply is capped at 450,000,000 coins: a 30,000,000-coin genesis allocation (founders 5%, vesting over five years; a stewardship fund 1.67%, vesting over twenty) plus a 50-coin block reward that halves every 4,200,000 blocks (about four years).</p>
+<hr>
+<h2 id="contents">Contents<a class="heading-anchor" href="#contents" aria-label="Link to &quot;Contents&quot;">#</a></h2>
+<ol>
+<li><a href="#1-introduction">Introduction</a></li>
+<li><a href="#2-design-goals">Design goals</a></li>
+<li><a href="#3-timeslots-and-the-verified-clock">Timeslots and the verified clock</a></li>
+<li><a href="#4-leader-election">Leader election</a></li>
+<li><a href="#5-slot-settlement-and-the-null-block">Slot settlement and the null block</a></li>
+<li><a href="#6-chain-selection-and-settlement">Chain selection and settlement</a></li>
+<li><a href="#7-eligibility-ticket-records-and-stake-outputs">Eligibility: ticket records and stake outputs</a></li>
+<li><a href="#8-cryptography">Cryptography</a></li>
+<li><a href="#9-transactions-and-scripts">Transactions and scripts</a></li>
+<li><a href="#10-monetary-policy">Monetary policy</a></li>
+<li><a href="#11-network-protocol">Network protocol</a></li>
+<li><a href="#12-synchronisation-and-checkpoints">Synchronisation and checkpoints</a></li>
+<li><a href="#13-node-and-storage">Node and storage</a></li>
+<li><a href="#14-governance-and-upgrades">Governance and upgrades</a></li>
+<li><a href="#15-threat-model">Threat model</a></li>
+<li><a href="#16-comparison">Comparison</a></li>
+<li><a href="#17-known-limitations-and-open-items">Known limitations and open items</a></li>
+</ol>
+<ul>
+<li><a href="#appendix-a-parameter-reference">Appendix A. Parameter reference</a></li>
+<li><a href="#appendix-b-confirmations-against-an-attacker-share">Appendix B. Confirmations against an attacker share</a></li>
+<li><a href="#references">References</a></li>
+</ul>
+<hr>
+<h2 id="1-introduction">1. Introduction<a class="heading-anchor" href="#1-introduction" aria-label="Link to &quot;1. Introduction&quot;">#</a></h2>
+<p>Every open blockchain has to decide who adds the next block, in a way an attacker cannot cheaply take over. Proof-of-work buys Sybil resistance (resistance to one party posing as many) with energy, and rewards whoever burns the most. Bonded proof-of-stake buys it with locked capital, and inherits a thicket of slashing, validator sets, and finality gadgets to police that capital. Spek is <strong>unbonded proof of stake</strong>: a per-slot election over stake outputs that each meet a coin threshold, with nothing locked and nothing slashed.</p>
+<p>Three ideas carry the design:</p>
+<ol>
+<li><strong>Time is the schedule.</strong> A block exists for every 30-second slot since genesis, whether or not anyone produced one. Height, timestamp, reward, fee floor, coin requirement and vesting are all functions of the slot number.</li>
+<li><strong>One stake output, one secret draw.</strong> A miner's score for a slot depends only on values fixed before the draw's random beacon existed: its key, a secret it committed for that slot, and the height. There is no nonce to grind, no key to swap in after the fact, and nothing a block producer can re-sign or re-order to improve its own or any later chance. Until a miner publishes its header, nobody else can compute its score.</li>
+<li><strong>Eligibility is the security parameter.</strong> Any selection rule over independent, uniform draws awards a party holding <em>N</em> of <em>N+H</em> draws exactly <em>N/(N+H)</em> of the slots. The only lever left is what a draw costs to field, and Spek prices that explicitly, in two phases (§7).</li>
+</ol>
+<p>Stake in Spek is a threshold met by one ordinary output, never a bond: nothing is locked, burned or slashed, there is no validator set and no delegation, and there is no yield. The block winner earns the block reward. For the first 45 days eligibility is priced with RandomX tickets instead (§7.2); that work buys eligibility for a round, never a block, so the chain is not proof of work even then. The result is a network whose honest operating cost is a node and a held balance.</p>
+<h3 id="11-one-slot-start-to-finish">1.1 One slot, start to finish<a class="heading-anchor" href="#11-one-slot-start-to-finish" aria-label="Link to &quot;1.1 One slot, start to finish&quot;">#</a></h3>
+<ol>
+<li>A new slot opens every 30 seconds. Its number is the height of the block it will produce.</li>
+<li>Each miner with an eligible key (§7) computes its score for the slot: one hash of the epoch's beacon, the height, its public key and its slot secret for that height (§4).</li>
+<li>For the first 6 seconds only block headers travel. Each node ranks the headers it receives by score.</li>
+<li>From 6 to 30 seconds nodes fetch the full blocks of the best few candidates and validate the best one.</li>
+<li>When the slot closes, each node commits the highest-ranked candidate whose full block is valid. If there is none, every node builds the same null block (§5).</li>
+<li>The winner's slot secret is mixed into the chain's election seed, from which a later epoch's beacon is read (§4.2).</li>
+</ol>
+<h3 id="12-terms">1.2 Terms<a class="heading-anchor" href="#12-terms" aria-label="Link to &quot;1.2 Terms&quot;">#</a></h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Slot</td>
+<td>One 30-second interval. Slot <em>h</em> produces the block at height <em>h</em>, so height and slot number are the same.</td>
+</tr>
+<tr>
+<td>Settled / unsettled</td>
+<td>A slot is unsettled while it is being mined and settled once it closes.</td>
+</tr>
+<tr>
+<td>Miner</td>
+<td>Any node that submits a candidate block for a slot. Mining here means one candidate per slot, not a hashing race.</td>
+</tr>
+<tr>
+<td>Epoch</td>
+<td>1,440 slots (12 hours). Every score in an epoch is drawn against that epoch's beacon.</td>
+</tr>
+<tr>
+<td>Beacon</td>
+<td>The random value of an epoch, read from the chain's election seed at the last block of the epoch before last.</td>
+</tr>
+<tr>
+<td>Slot secret</td>
+<td>A per-height value only the key owner can compute, committed in advance and revealed in the header.</td>
+</tr>
+<tr>
+<td>Segment, horizon</td>
+<td>A segment is 8,640 slots (3 days) covered by one hash chain of slot secrets. A horizon is 1,024 segments (about 8.4 years) committed at once.</td>
+</tr>
+<tr>
+<td>Stake address, stake output</td>
+<td>The address built from a miner's key and its horizon commitment, and the one unspent output there that makes the key eligible.</td>
+</tr>
+<tr>
+<td>Score</td>
+<td>How far a draw's hash lies from the centre of the 256-bit hash space. The highest score wins.</td>
+</tr>
+<tr>
+<td>Election seed</td>
+<td>A value carried in every block header. Each block derives its seed from its parent's seed, its winner's key and its winner's slot secret. Beacons are read from it.</td>
+</tr>
+<tr>
+<td>Slot seed</td>
+<td>A random 32-byte secret in the miner's key file. Every slot secret is derived from it, and it is never published.</td>
+</tr>
+<tr>
+<td>Round seed</td>
+<td>The block hash that keys one round of the seed-phase RandomX ticket search (§7.2).</td>
+</tr>
+<tr>
+<td>Null block</td>
+<td>The block with no transactions that every node builds for a slot with no valid candidate. Its score is 0.</td>
+</tr>
+<tr>
+<td>Seed phase, ticket record</td>
+<td>The first 45 days, when eligibility comes from RandomX tickets recorded on chain instead of coins. "Seed" here only names the launch period; it is not the election, slot or round seed.</td>
+</tr>
+<tr>
+<td>Restoration pin</td>
+<td>The checkpoint below which a running node never reorganises its chain. It trails the tip by 33–67 hours.</td>
+</tr>
+<tr>
+<td>Checkpoint</td>
+<td>A block hash compiled into a release or carried in a signed pin file, which a node without its own history trusts.</td>
+</tr>
+<tr>
+<td>Bits</td>
+<td>The smallest unit: 10⁸ bits per coin.</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="2-design-goals">2. Design goals<a class="heading-anchor" href="#2-design-goals" aria-label="Link to &quot;2. Design goals&quot;">#</a></h2>
+<ul>
+<li><strong>Post-quantum by construction.</strong> SQIsign for every signature (Level I for headers and everyday outputs, Level V opt-in for long-lived custody), keys hidden behind hashes until spent, no elliptic-curve code in the signing code, and a versioned migration path (§8.5).</li>
+<li><strong>No computational waste.</strong> One BLAKE3 evaluation per stake output per slot decides candidacy; producing the slot secret costs fewer than 96 hashes. Signing costs 25–40 ms once per slot; verifying a header costs one SQIsign verification (2.7–5.0 ms) plus a walk of at most 8,651 hashes (0.9–2.6 ms).</li>
+<li><strong>Ungrindable, unpredictable election.</strong> Every score input is fixed before the beacon it is drawn against exists, and each winner adds secret entropy to a later beacon. No winner schedule exists to read ahead of time, so there is no predicted winner to target.</li>
+<li><strong>Deterministic everything.</strong> Timestamps, rewards, tie-breaks, null blocks and genesis bytes are identical on every node. SQIsign signatures are randomised, so the protocol keeps them out of everything that must be deterministic.</li>
+<li><strong>Plain settlement claims.</strong> Forks near the tip are compared within a 4-block window (about 2 minutes). Transactions settle by confirmations sized to an assumed attacker share (Appendix B), and a running node never reorganises below its restoration pin (33–67 h). There is no finality gadget.</li>
+<li><strong>Fail fast.</strong> Cheap structural checks reject bad input in microseconds; expensive checks run only on the top-ranked candidates.</li>
+<li><strong>Plain governance.</strong> One upgrade mechanism (block version and flag height), no on-chain voting, a published multisig council for the stewardship fund.</li>
+</ul>
+<h2 id="3-timeslots-and-the-verified-clock">3. Timeslots and the verified clock<a class="heading-anchor" href="#3-timeslots-and-the-verified-clock" aria-label="Link to &quot;3. Timeslots and the verified clock&quot;">#</a></h2>
+<h3 id="31-slots">3.1 Slots<a class="heading-anchor" href="#31-slots" aria-label="Link to &quot;3.1 Slots&quot;">#</a></h3>
+<p>With genesis timestamp <code>G</code>, the slot being mined now, which is also the height of the block that does not exist yet, is</p>
+<pre><code>current slot       = ⌊(now − G) / 30⌋        unsettled: being mined
+settled tip        = current slot − 1        the newest block that can exist
+timestamp(h)       = G + 30·h
+</code></pre>
+<p>The header has no timestamp field: a block at height <em>h</em> can only have timestamp <code>G + 30h</code>. That removes timestamp manipulation, median-time-past rules and tolerance windows by construction. Block height is a <code>u32</code> (about 4,000 years of 30-second slots); derived timestamps are 64-bit.</p>
+<p>Slots are grouped into <strong>epochs</strong> of <code>L</code> = 1,440 slots (12 h), which carry the election beacon (§4.2), and <strong>segments</strong> of <code>S</code> = 8,640 slots (3 days), which carry each key's slot-secret hash chains (§4.1).</p>
+<h3 id="32-two-phases-per-slot">3.2 Two phases per slot<a class="heading-anchor" href="#32-two-phases-per-slot" aria-label="Link to &quot;3.2 Two phases per slot&quot;">#</a></h3>
+<p>Each slot has a <strong>headers-only phase (0–6 s)</strong>, in which 743-byte candidate headers flood the network and the ranking settles, and a <strong>block phase (6–30 s)</strong>, in which nodes fetch full blocks only for the top three candidates (rank 1 from three peers, ranks 2–3 from one each) and serve the top five. Because bodies move only after the ranking is known, unranked blocks cannot waste bandwidth. The 24-second body window fits megabyte-scale blocks crossing intercontinental links, with room for two retry rounds.</p>
+<pre><code>0 s                6 s                                                   30 s
+|--- headers only --|--- pull top-3 bodies · validate rank-1 · serve top-5 ---|
+slot h opens                                        boundary: winner of h committed, or null
+</code></pre>
+<h3 id="33-where-time-comes-from">3.3 Where time comes from<a class="heading-anchor" href="#33-where-time-comes-from" aria-label="Link to &quot;3.3 Where time comes from&quot;">#</a></h3>
+<p>A wrong clock puts a node in the wrong slot, so Spek does not take consensus time from the operating system. Each node keeps its own <strong>verified clock</strong>:</p>
+<ul>
+<li><strong>Source.</strong> Roughtime, an authenticated time protocol. Every response is authenticated end to end: the server's long-term Ed25519 key signs a delegation certificate, the delegated key signs the response, the node's own request is bound into the signed reply (so a recorded reply cannot be replayed), and the reported time must sit inside the delegation's validity span.</li>
+<li><strong>Quorum.</strong> Servers are queried in parallel and every sample is corrected for round-trip time. Each <em>operator</em> (whoever holds the keys) casts one vote, the median of its own samples, however many addresses it runs. Votes more than 2 s from the median of votes are discarded, at least 3 voting operators must remain (a node may be set to require more, never fewer), and the median of the surviving votes is adopted, rounded to whole seconds.</li>
+<li><strong>Between syncs.</strong> Verified time is carried forward on the raw hardware oscillator, not on the system clock the host's NTP daemon adjusts. Raw oscillators run 30–100 ppm off on ordinary and cloud hosts, so the node learns its oscillator's rate from successive syncs and corrects for it. Each sync may move the learned rate by at most 50 ppm, and the rate is clamped at 250 ppm, so a steered quorum cannot install a large false rate in one step.</li>
+<li><strong>Cadence.</strong> A node syncs hourly while it learns its rate, and every 4 h once a sync confirms the rate to within 5 ppm (at most about 72 ms of drift over the interval). A sync that shows the rate has changed (a migrated virtual machine, for example) drops it back to hourly.</li>
+<li><strong>Step bound.</strong> A new median is accepted outright only within 5 s of where the node's clock already is. Larger backward steps are refused; larger forward steps need corroboration, either from the node's own measured drift (the suspend-and-resume case) or from a second sync at a higher quorum.</li>
+<li><strong>Mining hold.</strong> A node that has never acquired a verified time does not sign blocks. Relaying, serving and syncing continue. An opt-out exists for the case where every configured server is down, and it is loud.</li>
+</ul>
+<blockquote>
+<p><strong>Consequence.</strong> Agreement between nodes' clocks is bounded by the residual after rate correction over one sync interval plus Roughtime path asymmetry, not by a "sub-second" promise. The 2-second outlier bound, the 5-second step bound and the 30-second slot are sized around that.</p>
+</blockquote>
+<h2 id="4-leader-election">4. Leader election<a class="heading-anchor" href="#4-leader-election" aria-label="Link to &quot;4. Leader election&quot;">#</a></h2>
+<p>The election needs a per-slot value that is (a) secret until used, (b) unique per height, so it cannot be ground, and (c) committed before the randomness it is drawn against exists. Spek builds it from BLAKE3 alone, with committed hash chains.</p>
+<h3 id="41-slot-secrets-and-horizons">4.1 Slot secrets and horizons<a class="heading-anchor" href="#41-slot-secrets-and-horizons" aria-label="Link to &quot;4.1 Slot secrets and horizons&quot;">#</a></h3>
+<p>Each miner key file holds a SQIsign Level I key pair and a 32-byte <strong>slot seed</strong> drawn from the operating system's random source when the key is generated (385 bytes in all). The slot seed is independent of the signing key, so recovering a SQIsign secret key reveals nothing about future slot secrets.</p>
+<pre><code>σ       = BLAKE3-derive-key("spek 2026-10-20 slot-secret v1", slot_seed)
+s_g     = BLAKE3("spek/slot-chain/v1" ‖ σ ‖ g)                 // one chain per 3-day segment g
+T_g     = step^S(s_g)                                          // segment top, step = BLAKE3("spek/slot-step/v1" ‖ x)
+r_h     = step^(S − 1 − (h mod S))(s_g(h))                     // slot reveal for height h
+leaf_j  = BLAKE3("spek/slot-leaf/v1" ‖ pk ‖ T_(J0 + j))         // j = 0 … 1023, key-bound
+C       = Merkle root over the 1,024 leaves                    // one horizon
+</code></pre>
+<p>Each segment's chain is revealed backwards, one value per slot, so publishing <code>r_h</code> exposes only values for heights already passed. A <strong>horizon</strong> is 1,024 consecutive segments starting at segment <code>J0</code>: about 8.4 years. Its root <code>C</code>, bound to the key in every leaf, is committed in the stake output (§7.1) before any beacon it will be drawn against exists, so for every key, commitment and height exactly one <code>r_h</code> verifies.</p>
+<p>A header carries the reveal, its 10-hash Merkle path and <code>J0</code>. A verifier walks the reveal up to its segment top (at most <code>S</code> hashes), hashes the key-bound leaf, climbs the path, and uses the root it derives to rebuild the stake address. If the reveal is wrong, there is simply no stake at that address. The root itself is never carried. A mining node keeps the 1,024 segment tops (32 KB) and checkpoints within the current segment, so producing <code>r_h</code> takes fewer than 96 hashes; building a horizon takes 1–3 s.</p>
+<p>A node creates its next horizon automatically about a year before the current one ends (122 segments by default, an operator setting), with two segments of overlap so eligibility never lapses.</p>
+<h3 id="42-the-epoch-beacon">4.2 The epoch beacon<a class="heading-anchor" href="#42-the-epoch-beacon" aria-label="Link to &quot;4.2 The epoch beacon&quot;">#</a></h3>
+<pre><code>B_e = BLAKE3("spek/beacon/v1" ‖ e ‖ genesis.merkle_root)                 e ∈ {0, 1}
+B_e = BLAKE3("spek/beacon/v1" ‖ e ‖ election_seed@beacon_height(e))      e ≥ 2
+beacon_height(e) = (e − 1)·L − 1
+</code></pre>
+<p>The beacon for epoch <em>e</em> is read from the election seed at the last block of epoch <em>e</em>−2, a full epoch before <em>e</em> starts. Every block of that source epoch mixes its winner's secret <code>r_h</code> into the election seed (§4.4), so the beacon is unpredictable until the source epoch has been produced. It is the same on every fork that shares that history, which covers every fork near the tip (at most 5 deep, against <code>L</code> = 1,440). The two launch epochs read the genesis merkle root, which commits to the launch ticket records and a launch nonce derived from a Bitcoin block mined after the record list was sealed (§7.2), so nobody, the organiser included, could choose it knowing the launch beacons.</p>
+<p>The miner at a beacon height can withhold its block and let the runner-up set the beacon instead, and because it holds its own future reveals it can evaluate both choices. Simulation puts the gain at 1.9–3.0% more of its own wins per beacon it controls, 0.3–0.6% averaged over all epochs, with no compounding.</p>
+<h3 id="43-the-score">4.3 The score<a class="heading-anchor" href="#43-the-score" aria-label="Link to &quot;4.3 The score&quot;">#</a></h3>
+<pre><code>score = middle_out( BLAKE3("spek/score/v2" ‖ B_e ‖ h ‖ pk ‖ r_h) )
+x = hash as a 256-bit integer,  C = 2^255
+middle_out(x) = x ≥ C ? (x − C) + 1 : C − x          // range [1, 2^255], arbitrary-precision integers
+</code></pre>
+<p>Both <code>0x00…00</code> and <code>0xFF…FF</code> score the maximum; <code>0x7F…FF</code> and <code>0x80…00</code> score 1. The genesis block scores the fixed <code>2^255</code>; a null block scores 0.</p>
+<pre><code>0x00…00                         C = 2^255                          0xFF…FF
+|==================================|==================================|
+score 2^255 (max)              score 1 (min)               score 2^255 (max)
+            higher score = further from centre = more likely to win
+</code></pre>
+<p>Every input is fixed before the beacon exists: the key and its commitment sit in a stake output that had to be created below a cutoff one full epoch before the beacon height (§7.1), and <code>r_h</code> is the unique reveal of that commitment. The key is inside the hash, so a copied commitment or a replayed reveal gives the copier an independent draw, never the victim's score. A genuine tie between two distinct keys has probability about 2^−255; the tie-break (highest score, then lowest public key, then lowest merkle root) makes the outcome deterministic and offers nothing to grind.</p>
+<p>A node checks a received header cheapest first:</p>
+<ol>
+<li><strong>Shape.</strong> Exact length and a valid version.</li>
+<li><strong>Claimed score.</strong> One hash over the header's key and reveal. A header that could not enter the slot's top five is dropped here, before any expensive check, and is not relayed.</li>
+<li><strong>Signature and reveal.</strong> On the validation pool: the SQIsign signature, then the reveal walk up to the horizon root. A reveal outside its horizon fails before any hash is computed.</li>
+<li><strong>Candidacy.</strong> The election seed must follow from the parent's, and the stake address rebuilt from the derived root must hold an eligible output (§7).</li>
+</ol>
+<p>A header enters the ranking only after steps 3 and 4 pass, so an unverified claim can never displace a verified entry. A junk header with a made-up reveal costs at most one signature check, one walk and one bounded stake lookup, whether or not its sender holds stake. With top-5 relay a node verifies about 5·(1 + ln(N/5)) headers per slot for N miners: about 31 at a thousand miners, 66 at a million.</p>
+<h3 id="44-the-election-seed-chain">4.4 The election seed chain<a class="heading-anchor" href="#44-the-election-seed-chain" aria-label="Link to &quot;4.4 The election seed chain&quot;">#</a></h3>
+<p>The header carries two hash chains with different jobs. <code>prev_block</code> is the <em>identity</em> chain: the BLAKE3 hash of the parent's signed fields. It leaves the signature out, because anyone holding a SQIsign signature can derive another valid one over the same bytes. <code>election_seed</code> is the <em>beacon</em> chain:</p>
+<pre><code>election_seed(h) = BLAKE3("spek/election-seed/v2" ‖ election_seed(h−1) ‖ miner_pubkey ‖ r_h)
+election_seed(0) = 0x00…00
+</code></pre>
+<p>The seed binds only the parent's seed, the winner's key and its committed reveal. No signature, merkle root or header hash enters it, so re-signing or re-ordering a block cannot move any later beacon.</p>
+<h3 id="45-mining-a-block">4.5 Mining a block<a class="heading-anchor" href="#45-mining-a-block" aria-label="Link to &quot;4.5 Mining a block&quot;">#</a></h3>
+<p>At each slot boundary a mining node, reading the parent, its seed, the beacon and the stake ledger from one consistent chain state:</p>
+<ol>
+<li>checks that it is in sync: its tip must be the previous slot (<code>chain_height + 1 == current_slot</code>), so a node behind the clock does not sign a block at the wrong height. This is not a pause during block download, which the protocol forbids (§12.2);</li>
+<li>picks its eligible horizon (in the seed phase, the one whose stake program holds the round's ticket record);</li>
+<li>computes <code>r_h</code> and its Merkle path, then the score and the next election seed;</li>
+<li>checks its own eligibility with the same rule block validation uses, and skips the slot rather than produce a block every peer would reject;</li>
+<li>builds a block from the mempool and checks it (structure, locktime, genesis spend rules, size and count limits, merkle root);</li>
+<li>signs the first 543 bytes of the header with SQIsign;</li>
+<li>saves the signed attempt to disk, so a restart within the slot re-announces the same header instead of a second, different one (§4.6);</li>
+<li>broadcasts the header.</li>
+</ol>
+<h3 id="46-equivocation">4.6 Equivocation<a class="heading-anchor" href="#46-equivocation" aria-label="Link to &quot;4.6 Equivocation&quot;">#</a></h3>
+<p>Each node keeps only one entry per miner key per parent per slot. Because the block hash leaves the signature out, a second header with identical signed content is the same block, and the two are merged. A second header with <em>different</em> signed content for the same attempt is equivocation: the miner's entry is removed, the attempt is cancelled for the slot under its <em>attempt-identity hash</em> <code>BLAKE3(prev_block ‖ miner_pubkey)</code> on every node, and a compact proof is gossiped so every node reaches the same verdict.</p>
+<h3 id="47-what-the-election-guarantees">4.7 What the election guarantees<a class="heading-anchor" href="#47-what-the-election-guarantees" aria-label="Link to &quot;4.7 What the election guarantees&quot;">#</a></h3>
+<p>Together, §4.1–§4.6 and the eligibility rules of §7 give the election these properties:</p>
+<ul>
+<li><strong>The same draw on every nearby fork.</strong> Two chains that share every block up to an epoch's beacon height give each key the same score at each height of that epoch. Every fork the network resolves near the tip shares that history.</li>
+<li><strong>A seed nobody can steer.</strong> The election seed, and every beacon read from it, depends only on the previous election seed, the winner's key and the winner's committed reveal. A producer can change nothing else in its block that moves them.</li>
+<li><strong>Inputs fixed before the beacon.</strong> A stake output or ticket record counts only if it was created a full epoch before the beacon height, so a key and its commitment are fixed before the randomness they are drawn against exists.</li>
+<li><strong>One value per height.</strong> For each key, commitment and height exactly one reveal verifies, so there is nothing to try again.</li>
+<li><strong>One draw per stake address and horizon.</strong> A stake address is built from the key and one horizon's commitment, so it belongs to exactly one horizon, and each eligible header names one horizon and one output at its address holding a full stake unit. Draws therefore scale with funded stake addresses, not with keys. One key with two funded horizons holds two draws per slot, the same as two keys: its miner computes both scores and publishes only the better header, so the network sees one header and no equivocation (§4.6). Two draws cost two full requirements, because one output counts for one address only and moving coins between addresses restarts their aging.</li>
+<li><strong>Draws bound to the key.</strong> The key is inside both the score and every commitment leaf. A copied commitment is invalid under any other key, and a replayed reveal gives the copier its own independent draw, never the victim's score.</li>
+<li><strong>Slot secrets independent of the signing key.</strong> The slot seed is separate random bytes, so recovering a SQIsign secret key reveals no future reveal.</li>
+<li><strong>No guessed beacons.</strong> Every score is computed under a beacon read from the chain being scored (§6.1); a header whose beacon cannot be read yet is held aside, never scored with a guess.</li>
+</ul>
+<h2 id="5-slot-settlement-and-the-null-block">5. Slot settlement and the null block<a class="heading-anchor" href="#5-slot-settlement-and-the-null-block" aria-label="Link to &quot;5. Slot settlement and the null block&quot;">#</a></h2>
+<p>At the slot boundary, each node goes through its retained candidates in rank order (up to the top five) and commits the first whose full body is in hand <em>and</em> passes full validation. Holding five candidates while fetching three leaves backups for a top candidate that is invalid or whose body never arrives. A node waits at most 2.5 s for the rank-1 verdict if it is still being computed.</p>
+<p>If a slot closes with no committable candidate, every node builds the <strong>canonical null block</strong> for <code>(height, prev_block)</code>: version 1, all-zero miner key, signature and slot fields, zero merkle root, no transactions and no coinbase. Its election seed is derived by the normal rule with a fixed null identity and an all-zero reveal, so the beacon chain continues unbroken. It is built, not mined, so nothing crosses the network. Its score is 0, below the minimum real score of 1, so any real block for that height outranks it: if a late winner surfaces, fork choice replaces the null with a reorganisation of depth 1, with no ban and no penalty. Null blocks mint nothing and are stored and served like ordinary blocks.</p>
+<blockquote>
+<p><strong>Residual.</strong> Settlement at each slot boundary settles one slot. If every node misses two or more boundaries at once (a coordinated restart, a network-wide freeze), no node is exactly one slot behind and the chain stops. Recovery is an operator-run RPC call that fills deterministic null blocks for settled slots, capped per call at the 4-block fork window and refused whenever any peer proves a better chain exists. It cannot be automatic: a single node cannot tell "the whole network was down" from "I was down".</p>
+</blockquote>
+<h2 id="6-chain-selection-and-settlement">6. Chain selection and settlement<a class="heading-anchor" href="#6-chain-selection-and-settlement" aria-label="Link to &quot;6. Chain selection and settlement&quot;">#</a></h2>
+<h3 id="61-cumulative-score">6.1 Cumulative score<a class="heading-anchor" href="#61-cumulative-score" aria-label="Link to &quot;6.1 Cumulative score&quot;">#</a></h3>
+<pre><code>chainwork(b) = chainwork(parent(b)) + score(b)       // score under the beacon of b's epoch on that chain
+</code></pre>
+<p>Chainwork is an arbitrary-precision sum that is never truncated or reset. Each block is scored against the beacon of its epoch <em>on the chain being scored</em>, resolved from that chain's own headers; a header whose beacon cannot yet be resolved is held aside, never scored with a guess.</p>
+<ul>
+<li><strong>Live headers</strong> are scored under the main chain's beacons. A header for an epoch other than the current or the next one is held aside, never ranked.</li>
+<li><strong>Forks near the tip</strong> are at most 5 blocks deep, far less than an epoch, so the block their beacon comes from is always shared with the main chain.</li>
+<li><strong>Candidate chains in download</strong> read each epoch's beacon from their own headers once they fork below that epoch's beacon height. Until that header has arrived, the candidate's weight is unknown, and a node never switches to a chain of unknown weight.</li>
+</ul>
+<h3 id="62-fork-resolution">6.2 Fork resolution<a class="heading-anchor" href="#62-fork-resolution" aria-label="Link to &quot;6.2 Fork resolution&quot;">#</a></h3>
+<ol>
+<li><strong>Forks near the tip.</strong> When a competing branch forks within the fork window (<code>PROPAGATION_FORK_WINDOW</code> = 4 blocks below the tip), the two branches are compared by cumulative score once each holds at least two blocks above the fork point; the heavier wins and the other is dropped. Waiting for both sides avoids switching back and forth on every block. The reorganisation is checked against a copy of the ledger before any live state changes, so an invalid fork block leaves the chain untouched. Rollback on this path is bounded at 5 blocks.</li>
+<li><strong>Deeper forks.</strong> If no common ancestor lies inside the window while the peer's chain keeps pace with the clock (which is what both sides of a healed network partition look like, since both mine every slot), the node switches to a full download, finds the true branch point, compares cumulative score, and reorganises at any depth above its restoration pin.</li>
+<li><strong>Checkpoint barrier.</strong> A fork whose branch point lies behind the node's restoration pin or a hard checkpoint is never resolved automatically, and the peer offering it is banned. Checkpoints sit on a 4,000-block grid (about 33 h), and the restoration pin is the newest grid boundary buried at least one full interval below the tip, so it trails the tip by 33–67 h. Only a partition that outlasts a boundary by more than an interval leaves the two sides with different pins; that state needs operator recovery.</li>
+</ol>
+<p>Coinbase outputs mature after 3,000 blocks (about 25 h).</p>
+<h3 id="63-settlement">6.3 Settlement<a class="heading-anchor" href="#63-settlement" aria-label="Link to &quot;6.3 Settlement&quot;">#</a></h3>
+<p>Spek has three settlement layers:</p>
+<ul>
+<li><strong>Confirmations (probabilistic).</strong> Draws are fixed per height, so an attacker can rewrite history only by out-scoring the honest chain over the same heights. Appendix B gives the confirmations needed for under one reversible slot per century against an attacker holding share <em>q</em> of the draws who may choose its fork point in hindsight: 37 confirmations (18 min) at 20%, 136 (68 min) at 33%, 412 (3.4 h) at 40%. Integrators choose their depth from the share they want to tolerate.</li>
+<li><strong>Restoration pins (per node).</strong> A running node never reorganises below its pin, which trails the tip by 33–67 h.</li>
+<li><strong>Checkpoints (weak subjectivity).</strong> A node with no history of its own trusts the checkpoints compiled into its release and pin files signed by a threshold of checkpoint signers (§12.3).</li>
+</ul>
+<p>There is no finality gadget and no rollback limit shorter than the pin.</p>
+<h2 id="7-eligibility-ticket-records-and-stake-outputs">7. Eligibility: ticket records and stake outputs<a class="heading-anchor" href="#7-eligibility-ticket-records-and-stake-outputs" aria-label="Link to &quot;7. Eligibility: ticket records and stake outputs&quot;">#</a></h2>
+<p>No election rule over independent draws can stop one party from fielding many draws, so the cost of fielding a draw is where Spek's security lives. That cost has two phases, and in both the thing that makes a key eligible must be on chain before the beacon it competes against.</p>
+<h3 id="71-after-the-seed-phase-one-stake-output">7.1 After the seed phase: one stake output<a class="heading-anchor" href="#71-after-the-seed-phase-one-stake-output" aria-label="Link to &quot;7.1 After the seed phase: one stake output&quot;">#</a></h3>
+<pre><code>min_coin_requirement(h) = max(0.8 × block_reward(h), 0.1 coin)     for h ≥ 129,600
+stake_address           = hidden-key address of (pk, BLAKE3("spek/slot-commit/v1" ‖ C ‖ J0))
+stake_cutoff(h)         = beacon_height(epoch(h)) − L
+</code></pre>
+<p>A header at height <em>h</em> is eligible only if its horizon covers <em>h</em> and its stake address, rebuilt from the header's key and the root its reveal derives, holds <strong>one</strong> unspent output that:</p>
+<ul>
+<li>is worth at least the requirement (several smaller outputs do not add up);</li>
+<li>was created below <code>stake_cutoff(h)</code>, one full epoch below the beacon height, so new stake first counts about 24–36 h after it is created;</li>
+<li>if it is a coinbase output, is mature.</li>
+</ul>
+<p>Eligibility is judged against the parent block's ledger, so spending the stake output ends eligibility from the next block, and on a fork each branch's own ledger decides. Counting one output per draw keeps the check to a short walk of a value-ordered index: every output it steps over holds at least a full requirement, so filling a stake address with dust cannot slow anyone's check. A stake address belongs to exactly one horizon, so each funded horizon is its own address with its own output and its own draw per slot. A key with two funded horizons holds two draws, which costs two requirements, economically the same as two keys: one output counts for one address only, and moving coins between addresses restarts their aging.</p>
+<p>After the seed phase, block production is <strong>capital-proportional</strong>: a holder of <em>X</em> coins can fund ⌊<em>X</em>/requirement⌋ stake outputs and wins slots in that proportion. The requirement sets the size of one draw, not the cost of an attack: matching the honest network costs roughly the capital it holds, whatever one draw costs. The requirement halves with the reward, and the 0.1-coin floor only binds about nine halvings (about 36 years) out.</p>
+<p>The stake key is public in every header its miner publishes and lives on the mining machine, so the node keeps exposure to one stake unit. By node policy (not consensus), the coinbase pays the stake address of the first horizon not yet funded, then a separate hidden-key payout address. A winner therefore funds its next horizon for free; a key that never wins renews with one ordinary transaction, which the node makes itself from any surplus at the current stake address about a year before the horizon ends, or which the operator funds from a wallet. The node also merges a stake address funded in pieces into a single output.</p>
+<p><strong>Renewal is a transaction.</strong> A miner that never wins keeps its eligibility by funding the next horizon's address with an ordinary transaction, at least one requirement, created early enough to age. The node builds the next horizon about a year ahead, and funds it itself from any surplus beyond the counted output at the current address; a node holding exactly one requirement needs a transfer from a wallet. Nothing is locked, so once the new output is aged the old one can be spent. A miner that wins a block gets the next horizon funded by its coinbase.</p>
+<p>This also avoids the classic proof-of-work death spiral. Honest operating cost is close to zero, so a falling price gives no miner a reason to switch off, and the honest draw count does not collapse with the price. Price exposure sits on the attacker's side: buying a large share drives the price up as it buys, and the stake it holds loses value when the attack is seen.</p>
+<h3 id="72-seed-phase-randomx-ticket-records">7.2 Seed phase: RandomX ticket records<a class="heading-anchor" href="#72-seed-phase-randomx-ticket-records" aria-label="Link to &quot;7.2 Seed phase: RandomX ticket records&quot;">#</a></h3>
+<p>At launch nobody holds coins, so a coin requirement would be zero and a draw would cost one SQIsign key generation (sub-second, parallel, pre-computable). The first 45 days (129,600 blocks) therefore use a different price. The seed phase is divided into 15 rounds of <code>W</code> = 8,640 blocks (3 days). A ticket is a nonce such that</p>
+<pre><code>RandomX_K( "SPEK-SEED-TICKET-V2" ‖ round ‖ round_seed ‖ A ‖ nonce ) &lt; D,   D = 2^228
+A            = the stake program (the 32-byte hidden-key program of the miner's stake address)
+K            = genesis hash (fixed for the whole seed phase)
+round_seed_0 = genesis hash
+round_seed_1 = hash of the block at height W/2
+round_seed_r = hash of the block at height (r−1)·W          for r ≥ 2
+</code></pre>
+<p>A ticket counts only once it is <strong>recorded on chain</strong>: a 48-byte record (<code>"SKTR"</code> ‖ round ‖ <code>A</code> ‖ nonce) carried as a zero-value <code>OP_RETURN</code> output in a seed-phase coinbase, at most 16 per block, one per <code>(A, round)</code> on the chain, each for the current or the next round. A block with an invalid record is invalid, and after the seed phase a coinbase may carry none. Records travel on their own gossip topic and wait in a bounded pool; every block producer includes pending ones. A record counts for an epoch only if it landed below that epoch's stake cutoff, so to cover a whole round it must land about two epochs before the round starts (a 48-hour search window per round). Because the ticket is committed before the beacon it competes against exists, a miner cannot rank free keys by their scores in an already-known epoch and buy tickets only for the best ones.</p>
+<p>The RandomX instance is a Spek variant with its own parameters, so rented hash power built for other chains cannot be pointed at it. Verification runs in light mode (15–30 ms, 256 MiB cache); searching uses the dataset of about 2 GiB. <code>D</code> was set so that a 2018-era 8-core desktop's spare cycles yield about three tickets per round; a slot in which no ticket holder is eligible gets the null block.</p>
+<p>A round's seed is read from the candidate chain's own ancestry, so a ticket's validity depends only on the block and its chain, and re-checks identically during download. Round 1 is seeded from the middle of round 0 rather than from genesis, so a pre-launch search can buy at most one round of tickets, not two.</p>
+<p><strong>Open launch.</strong> Epochs 0–2 (the first 36 hours) count only records written into the genesis coinbase, and anyone can win one:</p>
+<ol>
+<li><strong>Open.</strong> The search opens at a pre-announced Bitcoin block. Its hash, with the network name, gives the launch key <code>K_L</code>, so no ticket can exist before it.</li>
+<li><strong>Search and submit.</strong> Anyone searches for a round-0 ticket under <code>K_L</code> (the same target <code>D</code>, with <code>K_L</code> as the RandomX key and round seed) and submits the record to a public submission channel. The channel checks each ticket on arrival and lists every valid entry with its ticket hash, so anyone can recheck the listing.</li>
+<li><strong>Seal.</strong> After the deadline the organiser publishes the sealed list with the genesis timestamp (6 hours after the deadline), the genesis message and the allocation, a digest over all of them, and the height of a Bitcoin block six blocks past the tip at that moment. Independent witnesses (anyone may witness) record the digest before that block is mined.</li>
+<li><strong>Select.</strong> The genesis takes up to 1,973 records, one per key, lowest ticket hash first, so when more are submitted than fit, searching longer buys better odds.</li>
+<li><strong>Derive.</strong> The launch nonce is derived from the launch key, the seal digest and that Bitcoin block's hash, and the genesis builder is deterministic. The launch beacons therefore depend on a value nobody knew while any input could still change, and anyone can recompute the selection and the genesis block from public inputs.</li>
+</ol>
+<p>One record is one key, and a node mines one key, so a launch seat costs what every later round costs: one ticket.</p>
+<p>Seed-phase draws are therefore priced by <strong>sustained work per round</strong> rather than one-time key generation: a bank of keys is worthless without fresh work per key per round, and a flood of keys fades within two rounds once its operator stops paying for it. Ticket holders must fund a stake output below the cutoff of the first epoch after the seed phase; the node warns seven days ahead.</p>
+<h3 id="73-what-the-schedule-does-and-does-not-do">7.3 What the schedule does and does not do<a class="heading-anchor" href="#73-what-the-schedule-does-and-does-not-do" aria-label="Link to &quot;7.3 What the schedule does and does not do&quot;">#</a></h3>
+<p>Both phases award blocks in proportion to the draws held. After the seed phase, draws are bought with coins that (apart from trading) only block rewards create, so the distribution of coin shares at the end of the seed phase carries forward under the election. Shares change afterwards only when coins change hands. One key per node is client policy, not consensus: nothing ties a miner key to a machine, and the economics do not depend on it.</p>
+<h2 id="8-cryptography">8. Cryptography<a class="heading-anchor" href="#8-cryptography" aria-label="Link to &quot;8. Cryptography&quot;">#</a></h2>
+<h3 id="81-signatures-sqisign-level-i-and-level-v">8.1 Signatures: SQIsign Level I and Level V<a class="heading-anchor" href="#81-signatures-sqisign-level-i-and-level-v" aria-label="Link to &quot;8.1 Signatures: SQIsign Level I and Level V&quot;">#</a></h3>
+<p>Every signature in the system is SQIsign (isogeny-based), produced by a vendored reference implementation behind an FFI boundary. There is no ECDSA, no Schnorr, and no elliptic-curve library linked into the signature code, and a test on the dependency graph keeps it that way.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Level</th>
+<th>Target</th>
+<th>Public key</th>
+<th>Signature</th>
+<th>Secret key</th>
+<th>Verify (ADX / portable)</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>I</td>
+<td>NIST level 1</td>
+<td>83 B</td>
+<td>200 B</td>
+<td>270 B</td>
+<td>2.68 / 5.03 ms</td>
+<td>Headers, mining keys, stake outputs, everyday outputs (the default)</td>
+</tr>
+<tr>
+<td>V</td>
+<td>NIST level 5</td>
+<td>169 B</td>
+<td>406 B</td>
+<td>549 B</td>
+<td>16.4 / 26.7 ms</td>
+<td>Opt-in custody outputs; every genesis allocation, council and guardian key</td>
+</tr>
+</tbody>
+</table></div>
+<p>Signing a Level I header takes 25–40 ms, once per slot for a miner; the signer verifies its own signature before releasing it. ADX is the faster arithmetic backend on recent x86 processors; portable is the plain C fallback.</p>
+<p><strong>Level I headers.</strong> A forger who broke Level I still could not win a live slot as someone else, because it would also need that key's unrevealed <code>r_h</code>, which comes from an independent slot seed and is protected only by BLAKE3. It could copy a just-revealed <code>r_h</code> into a second header and force the slot to be cancelled as equivocation (a liveness attack, not a theft), and it could sign branches for past heights down to the restoration pin, which would hold at any level that broke. The payout rule keeps one stake unit per key (§7.1). Mining keys rotate with every horizon, so moving headers to a new level later is a hard fork that phases in as horizons expire, with no coin moves.</p>
+<p><strong>Standardisation and review status.</strong> SQIsign is not a NIST standard. NIST advanced nine candidates to Round 3 of its additional digital-signature process in May 2026; one of them, HAWK, has since been withdrawn by its submission team, leaving eight, and SQIsign is among them. That round is expected to last about two years, a draft standard could not appear before about 2028, and SQIsign may be dropped. "Level I" and "Level V" refer to the security categories the parameters target (comparable to AES-128 and AES-256 key search), not to any NIST approval. Spek uses SQIsign rather than the standardised ML-DSA for its size: a 200-byte signature and an 83-byte key against roughly 2.4 KB and 1.3 KB. The trade-off is that SQIsign's security rests on a younger assumption (the supersingular endomorphism-ring problem) with less cryptanalytic history than lattices, and on a reference implementation that was not built for production. Spek's copy of that implementation and its Rust FFI boundary have been audited only by AI models (Claude). No cryptographer, SQIsign author, or independent human auditor has reviewed them before launch.</p>
+<p>A public key has exactly one valid encoding: every field element must be canonical (below the field prime), and the starting curve E₀, whose endomorphism ring is public, is never an acceptable key. A non-canonical encoding is a decode error, never silently corrected. A verification cache (262,144 entries) remembers only valid signatures, so re-presented valid signatures cost a hash lookup; it never caches failures and never changes a verdict.</p>
+<h3 id="82-hashing-blake3">8.2 Hashing: BLAKE3<a class="heading-anchor" href="#82-hashing-blake3" aria-label="Link to &quot;8.2 Hashing: BLAKE3&quot;">#</a></h3>
+<p>BLAKE3 is used for block hashes, election seeds, beacons, scores, slot secrets and their Merkle trees, transaction merkle trees, script and hidden-key commitments, the <code>OP_BLAKE3</code> opcode, addresses, and the UTXO script index. Every consensus hash is domain-separated by a tag string. Transaction merkle trees tag leaves (<code>0x00</code>) and interior nodes (<code>0x01</code>) so no byte string can be valid as both; odd levels duplicate the last node, and a block may not contain the same transaction id twice.</p>
+<h3 id="83-block-header">8.3 Block header<a class="heading-anchor" href="#83-block-header" aria-label="Link to &quot;8.3 Block header&quot;">#</a></h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Bytes</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>version</code></td>
+<td>4</td>
+<td>Header and signature scheme; only 1 is valid until an upgrade activates 2</td>
+</tr>
+<tr>
+<td><code>prev_block</code></td>
+<td>32</td>
+<td>Identity chain: BLAKE3 of the parent's 743-byte header, signature excluded</td>
+</tr>
+<tr>
+<td><code>merkle_root</code></td>
+<td>32</td>
+<td>Domain-separated BLAKE3 merkle root of transactions</td>
+</tr>
+<tr>
+<td><code>election_seed</code></td>
+<td>32</td>
+<td>Beacon chain (§4.4)</td>
+</tr>
+<tr>
+<td><code>block_height</code></td>
+<td>4</td>
+<td>Equals the slot number; the timestamp is derived</td>
+</tr>
+<tr>
+<td><code>miner_pubkey</code></td>
+<td>83</td>
+<td>SQIsign Level I key; input to score, seed, stake address and attempt identity</td>
+</tr>
+<tr>
+<td><code>horizon_start</code></td>
+<td>4</td>
+<td><code>J0</code>, the first segment of the horizon the reveal belongs to</td>
+</tr>
+<tr>
+<td><code>slot_reveal</code></td>
+<td>32</td>
+<td><code>r_h</code> (§4.1)</td>
+</tr>
+<tr>
+<td><code>slot_path</code></td>
+<td>320</td>
+<td>The 10-hash Merkle path from the reveal's leaf to the horizon root</td>
+</tr>
+<tr>
+<td><code>miner_signature</code></td>
+<td>200</td>
+<td>SQIsign signature over the first 543 bytes</td>
+</tr>
+</tbody>
+</table></div>
+<p>The signature covers every other field, not just the score inputs, so nobody can attach a different transaction set to a winning header. The encoding is a fixed 743-byte layout; trailing bytes are rejected. Headers grow by about 781 MB a year, however many miners there are. The horizon root is derived, never carried; seed-phase tickets live in coinbase records, not the header; there is no reserved header field.</p>
+<h3 id="84-hidden-keys-and-script-commitments-instead-of-taproot">8.4 Hidden keys and script commitments instead of Taproot<a class="heading-anchor" href="#84-hidden-keys-and-script-commitments-instead-of-taproot" aria-label="Link to &quot;8.4 Hidden keys and script commitments instead of Taproot&quot;">#</a></h3>
+<p>Taproot hides a script tree by tweaking an elliptic-curve key. Isogeny keys cannot be tweaked that way, so Spek's analogue, <strong>ScriptCommit</strong>, commits to the script tree with a hash:</p>
+<pre><code>commitment = BLAKE3(T ‖ T ‖ pubkey ‖ script_merkle_root),  T = BLAKE3("SpekScriptCommit")
+key-path-only outputs use commitment = 0x00…00
+</code></pre>
+<p>The default output hides even the key. A <strong>hashed</strong> output is 34 bytes, a witness version and a 32-byte program, the same shape as a Bitcoin P2WSH or P2TR output:</p>
+<pre><code>v1 (Level I):  OP_1 &lt;32 B&gt;   program = TH("SpekHashedCommit",   pubkey83  ‖ commitment)
+v2 (Level V):  OP_2 &lt;32 B&gt;   program = TH("SpekHashedCommitL5", pubkey169 ‖ commitment)
+</code></pre>
+<p>A key-path spend reveals the key and commitment next to one signature. A script-path spend reveals the leaf, its merkle proof and a control block; the node recomputes the commitment and the program before running the leaf in the script machine (§9.3). Leaves under a v2 output verify Level V signatures. Multisig, timelocks, hash locks and atomic swaps can be expressed; key aggregation cannot. The plain ScriptCommit output (<code>OP_1 &lt;83-byte pubkey&gt; &lt;32-byte commitment&gt;</code>, 118 bytes) remains valid for outputs that want the key visible.</p>
+<p>Addresses are Bech32m with the prefix <code>spek</code>: witness version 1 carries a 32-byte hashed program or the 115-byte plain program, and version 2 a 32-byte Level V program. Decoding re-encodes and requires a byte-exact match, so each output script has exactly one lowercase address string. Wallets use the hashed form for every receive, change and coinbase address, so a public key is exposed only when its output is spent. The exception is a stake key, which every header it signs makes public.</p>
+<h3 id="85-crypto-agility">8.5 Crypto-agility<a class="heading-anchor" href="#85-crypto-agility" aria-label="Link to &quot;8.5 Crypto-agility&quot;">#</a></h3>
+<p>There is no per-transaction choice of algorithm and no runtime negotiation: at any height exactly one scheme is valid for a given output form or header version, which rules out downgrade and algorithm-confusion attacks. The witness version selects the output scheme (1 = Level I, 2 = Level V; versions 3–16 are reserved), and the block version selects the header scheme, activated through the height-indexed upgrade schedule (§14). Because the signed message commits to every spent output's locking script, a signature for one scheme can never be reinterpreted under another. A hash-committed output is the shape other chains are adding for a post-quantum migration; Spek starts with it, and with a second, larger parameter set already live for custody.</p>
+<h2 id="9-transactions-and-scripts">9. Transactions and scripts<a class="heading-anchor" href="#9-transactions-and-scripts" aria-label="Link to &quot;9. Transactions and scripts&quot;">#</a></h2>
+<h3 id="91-model">9.1 Model<a class="heading-anchor" href="#91-model" aria-label="Link to &quot;9.1 Model&quot;">#</a></h3>
+<p>Spek is a UTXO ledger: coins are unspent outputs of earlier transactions, as in Bitcoin. Values are unsigned 64-bit integers counted in <em>bits</em> (10⁸ bits per coin); there is no floating point anywhere in the protocol or its RPC. Exactly four output forms can be created: hashed Level I (34 bytes), hashed Level V (34 bytes), plain ScriptCommit (118 bytes), and zero-value <code>OP_RETURN</code> data outputs, which never enter the UTXO set. There is no pay-to-pubkey form. Everything else is rejected, in blocks and in the mempool, because an unspendable output would burn its coins forever.</p>
+<p>The transaction id is the BLAKE3 hash of every field except the witnesses (the signatures and revealed data), so it is fixed before signing and no relay can change it; the block merkle tree commits to a second hash over the full encoding, witnesses included. The signed message commits to the chain (its genesis block hash), the inputs, the outputs, every spent output's value <em>and</em> locking script, and the version, but not to the witness. Committing to the chain matters for offline signers: the same keys produce byte-identical scripts on every chain, so without it a signature made on a test chain could be valid on mainnet. A spend's transaction id is stable only while its witness is the only one that satisfies it, so validation enforces a full canonical form: canonical witness encoding, minimal numbers, a clean stack, minimal conditionals, and one signature rule under which a non-empty signature that fails verification aborts the script rather than evaluating to false. Every signature signs the whole transaction (<code>SIGHASH_ALL</code>); there are no other signature modes.</p>
+<h3 id="92-time-locks">9.2 Time locks<a class="heading-anchor" href="#92-time-locks" aria-label="Link to &quot;9.2 Time locks&quot;">#</a></h3>
+<p>All locks are block-height locks; there is no timestamp variant, because height <em>is</em> time. Absolute <code>nLockTime</code>, relative <code>nSequence</code> locks (as in Bitcoin's BIP68, version 2 and up), <code>OP_CHECKLOCKTIMEVERIFY</code> and <code>OP_CHECKSEQUENCEVERIFY</code> are enforced with one spending-height rule shared by block validation and the mempool: the height the transaction would be mined at.</p>
+<h3 id="93-script-machine">9.3 Script machine<a class="heading-anchor" href="#93-script-machine" aria-label="Link to &quot;9.3 Script machine&quot;">#</a></h3>
+<p>A minimal stack machine runs ScriptCommit leaves: 82 opcodes, frozen per leaf version (<code>0xc0</code>). <code>OP_BLAKE3</code> sits on Bitcoin's SHA-256 byte, and <code>OP_SHA256</code> at <code>0xbb</code>, so cross-chain atomic swaps can share one hash lock with Bitcoin-family chains. <code>OP_CHECKSIG</code>, <code>CHECKSIGVERIFY</code> and <code>CHECKSIGADD</code> verify SQIsign at the level of the output's witness version; Bitcoin's <code>CHECKMULTISIG</code> opcodes are disabled. Limits: 10,000-byte scripts, 1,000-item stacks, 520-byte elements, 100-deep conditionals, 128-deep merkle proofs. Signature verification is the dominant cost and a failed signature cannot be cached, so each input carries a signature budget (213 witness bytes per Level I verification, 421 per Level V verification, charged <em>before</em> the verification): an attacker-written leaf cannot make a node do more than about one verification per genuine signature's worth of witness bytes. Everything else a script can do costs under 2 ms per input at the limits.</p>
+<h3 id="94-virtual-size-fees-and-the-mempool">9.4 Virtual size, fees and the mempool<a class="heading-anchor" href="#94-virtual-size-fees-and-the-mempool" aria-label="Link to &quot;9.4 Virtual size, fees and the mempool&quot;">#</a></h3>
+<p>A Level V verification costs up to 6.119 times a Level I verification, so each Level V input's witness bytes count ρ = 151/50 = 3.02 times in a transaction's <strong>virtual size</strong>. Blocks are limited to <code>header + Σ vsize ≤ 2 MiB</code>, and every fee rate is measured in virtual size, so no block can take longer to verify than a full Level I block. For a transaction with no Level V input, virtual size equals its size in bytes.</p>
+<p>A relay fee floor (250,000 bits at launch, falling each halving era) is flat for transactions up to 3,000 virtual bytes and rises linearly above that, so occupying the UTXO set permanently is priced while ordinary payments are not. The mempool is bounded (200 MB and 100,000 transactions by default). Block templates fill 85% of a block by fee rate and the rest oldest-first, and a miner's coinbase claims the block reward plus fees, never more. One transaction type sits outside the fee market: a guardian's cancellation of a staged allocation spend (§10.2) cannot raise its own fee, so the mempool admits it without a fee contest, never evicts it, moves it to the front once its deadline is within a day, and lets nothing but another cancellation replace it. A flood of higher-paying traffic therefore cannot run out the 30-day veto window.</p>
+<h2 id="10-monetary-policy">10. Monetary policy<a class="heading-anchor" href="#10-monetary-policy" aria-label="Link to &quot;10. Monetary policy&quot;">#</a></h2>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>450M</th>
+<th>50</th>
+<th>4.2M</th>
+<th>30M</th>
+<th>3,000</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>hard cap (coins)</td>
+<td>reward at block 1</td>
+<td>blocks per halving (~4 y)</td>
+<td>genesis allocation</td>
+<td>coinbase maturity (blocks)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="101-emission">10.1 Emission<a class="heading-anchor" href="#101-emission" aria-label="Link to &quot;10.1 Emission&quot;">#</a></h3>
+<pre><code>reward(0) = 30,000,000 coins                         (one-time genesis allocation)
+reward(h) = max(50 coins &gt;&gt; ⌊(h−1)/4,200,000⌋, 1 bit)  clamped so Σ ≤ 450,000,000 coins
+</code></pre>
+<p>Halvings count from block 1, so the first is at height 4,200,001. The halving series sums to about 420,000,000 coins; with the 30,000,000-coin genesis allocation the cap is filled <em>exactly</em>. The 1-bit floor only fills sub-coin rounding. Once total issuance reaches the cap the reward is zero and miners are paid by fees alone; a block with no fees and no reward carries a zero-value <code>OP_RETURN</code> coinbase.</p>
+<h3 id="102-genesis-allocation-667">10.2 Genesis allocation (6.67%)<a class="heading-anchor" href="#102-genesis-allocation-667" aria-label="Link to &quot;10.2 Genesis allocation (6.67%)&quot;">#</a></h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Outputs</th>
+<th>Recipient</th>
+<th>Amount</th>
+<th>Unlock</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>vout 0</td>
+<td>Genesis message ("Make Crypto Decentralized Again")</td>
+<td>0</td>
+<td>Permanently unspendable</td>
+</tr>
+<tr>
+<td>vout 1–15</td>
+<td>Founders (5.00%), per-founder 2-of-3 vaults</td>
+<td>22,500,000</td>
+<td>Five annual tranches, one output per founder in each, years 1–5</td>
+</tr>
+<tr>
+<td>vout 16</td>
+<td>Stewardship fund launch slice</td>
+<td>1,500,000</td>
+<td>From coinbase maturity</td>
+</tr>
+<tr>
+<td>vout 17–26</td>
+<td>Stewardship fund tranches, 10 × 600,000</td>
+<td>6,000,000</td>
+<td>Years 2, 4, … 20</td>
+</tr>
+</tbody>
+</table></div>
+<p>The open launch's ticket records follow these outputs in the genesis coinbase (§7.2). There is no premine beyond this allocation and no on-chain treasury voting.</p>
+<ul>
+<li><strong>Vesting is consensus.</strong> A spend of a locked genesis output is invalid below its unlock height, whatever the transaction's own locktime, so a leaked founder or council key cannot move a tranche early.</li>
+<li><strong>Keys.</strong> Every allocation output is a 34-byte Level V hashed vault (witness version 2) with no usable key path: its internal key is provably unusable. Every allocation, council and guardian key is SQIsign Level V. Each founder's outputs sit under that founder's own 2-of-3 multisig; the stewardship fund sits under one 3-of-5 council multisig, with no reserve keys and no timelocked recovery path.</li>
+<li><strong>Staging and veto.</strong> Allocation coins can leave a vault only by being staged. A staged output can be released only after 86,400 blocks (about 30 days), and inside that window its guardians can cancel it back to the vault: 3 of 5 fund guardians for the stewardship fund, 1 of 3 per founder for that founder's vault. Consensus guarantees the public 30-day veto window; where a released output goes is the guardians' published policy, not a protocol rule.</li>
+</ul>
+<h2 id="11-network-protocol">11. Network protocol<a class="heading-anchor" href="#11-network-protocol" aria-label="Link to &quot;11. Network protocol&quot;">#</a></h2>
+<h3 id="111-transport-and-peers">11.1 Transport and peers<a class="heading-anchor" href="#111-transport-and-peers" aria-label="Link to &quot;11.1 Transport and peers&quot;">#</a></h3>
+<p>Spek runs on libp2p over <strong>QUIC only</strong> (encrypted with TLS 1.3, with stream multiplexing). Hosts on networks that block UDP cannot take part. Peers are found from a built-in bootstrap list, built-in DNS seed names, and a Kademlia random walk (frequent for ten minutes after start, then every ten minutes). A DNS answer only offers addresses to dial: at most half of a node's outbound connections come from it. A node lets go of a bootstrap node once it is synced to that node's exact tip and holds other peers, so bootstrap nodes keep room for nodes that are still joining. Every connection, however it was found, must pass diversity limits: at most one peer per IP address, at most a third of each direction's connections from one network group (13 inbound and 6 outbound on mainnet), at most 34% from hosting providers' networks (autonomous systems), 20 outbound and 60 in total on mainnet. Native IPv6 is not supported at launch.</p>
+<h3 id="112-propagation">11.2 Propagation<a class="heading-anchor" href="#112-propagation" aria-label="Link to &quot;11.2 Propagation&quot;">#</a></h3>
+<p>Headers flood the network and are verified away from the event loop on a priority validation pool (signature 3–6 ms plus the reveal walk), with per-peer limits on work in flight, after the one-hash claimed-score filter has dropped any header that could not rank. Block bodies are <em>pulled</em> on request, never pushed. Seed-phase ticket records travel on their own topic and are checked at mempool priority, never on the slot-critical path.</p>
+<p>Current-slot blocks are fetched compact-first: the serving peer sends short transaction ids keyed by a nonce it chooses, the receiving node rebuilds the block from its mempool and must arrive at the header's merkle root, and any failure falls back to requesting the full block. Full blocks remain the unconditional fallback and the path for initial download.</p>
+<p>The scheduler serves the current slot's rank-1 block validation ahead of everything else: it has a reserved lane, then live propagation and catch-up share the next priority, then initial download, then mempool admission.</p>
+<h3 id="113-misbehaviour">11.3 Misbehaviour<a class="heading-anchor" href="#113-misbehaviour" aria-label="Link to &quot;11.3 Misbehaviour&quot;">#</a></h3>
+<p>Violations are counted per IP address (an IPv4 address written in IPv6 form counts as the same address), in three classes (header, transaction, block), each with its own threshold. Bans escalate 1 day → 4 days → 90 days, persist across restarts, and expire on the verified clock; a strike memory that survives expiry keeps a returning offender on the top rung. A ban for diverging across a checkpoint is capped at 16 days, so an honest node on the wrong side of a fork can always return.</p>
+<p>Objective invalidity, such as a bad signature, a reveal outside its horizon or an invalid ticket record, is a strike. So is a header that builds directly on the receiving node's tip but is ineligible there, or carries an election seed that does not follow from the tip's: every node on that tip reaches the same verdict, and an honest node publishes a header only after checking it on its own tip. Five header strikes inside 18 hours ban the address. Drops that might be the relaying peer's fault rather than the producer's, or that depend on a ledger view that differs between forks, are silent and never strikes.</p>
+<h2 id="12-synchronisation-and-checkpoints">12. Synchronisation and checkpoints<a class="heading-anchor" href="#12-synchronisation-and-checkpoints" aria-label="Link to &quot;12. Synchronisation and checkpoints&quot;">#</a></h2>
+<h3 id="121-initial-block-download">12.1 Initial block download<a class="heading-anchor" href="#121-initial-block-download" aria-label="Link to &quot;12.1 Initial block download&quot;">#</a></h3>
+<p>A joining node downloads headers in batches and checks signatures and horizons in parallel, then fetches bodies in order and applies them strictly one at a time with the same block validation used at the tip, including each header's stake output or ticket record against the ledger built so far. Each candidate chain resolves its own beacons from its own headers.</p>
+<p>Before switching to a candidate that forks below its tip, a node checks the candidate's headers whose stake had to exist before the fork point. For those heights every output or record that can count was created in the shared history, so the node checks each one against the ledger at the common ancestor, and every node reaches the same verdict. A candidate that fails is refused before anything is rolled back, and the peers that offered it are set aside. A fabricated chain therefore cannot force a synced node to unwind its own chain.</p>
+<p>Every block at every height is fully verified, signatures included; there is no "assume-valid" height. Download starts only with at least 8 sync peers, or 1 if a built-in bootstrap node is connected, and no flag or RPC can lower that, so an attacker who surrounds a node with its own peers (an eclipse) cannot relax it. The node keeps mining and relaying while it waits.</p>
+<h3 id="122-mining-is-never-paused-by-download">12.2 Mining is never paused by download<a class="heading-anchor" href="#122-mining-is-never-paused-by-download" aria-label="Link to &quot;12.2 Mining is never paused by download&quot;">#</a></h3>
+<p>If a candidate chain could pause mining, an attacker could advertise a fake heavy chain to halt honest block production and exploit the weakened window. Mining on the main chain continues unconditionally; if the download finds a better chain, the switch to it orphans the node's own blocks in the normal way.</p>
+<h3 id="123-checkpoints">12.3 Checkpoints<a class="heading-anchor" href="#123-checkpoints" aria-label="Link to &quot;12.3 Checkpoints&quot;">#</a></h3>
+<p>Checkpoints sit on the 4,000-block grid (§6.2). Hard checkpoints pin settled history for nodes that have none of their own (a new node, a resync, a node offline for days): peers' claims of chain weight are unauthenticated and could otherwise lock such a node onto a fabricated heavier chain. Unbonded stake cannot stop signing after the fact: a key that held stake at a fork point can sign a branch from that point at any later time, even after its owner sold the coins, and a private branch knows its own future beacons. Checkpoints are therefore permanent weak subjectivity, never retired.</p>
+<p>Each release compiles in checkpoints the running network already holds as restoration pins, and between releases a pin file extends them. The node checks that file itself: it must name the network and genesis and carry signatures from a threshold of the checkpoint signers compiled into the binary, and it may add to the compiled-in table but never contradict it. Each signer confirms the hash on their own fully validated node, builds are reproducible, and every published pin can be checked independently.</p>
+<h2 id="13-node-and-storage">13. Node and storage<a class="heading-anchor" href="#13-node-and-storage" aria-label="Link to &quot;13. Node and storage&quot;">#</a></h2>
+<p>The reference implementation is a Rust workspace containing the node, a wallet, the miner key tool, the stewardship covenant and guardian tools, and an operator GUI.</p>
+<p>State lives in RocksDB (headers, blocks with undo data, the UTXO set, the main-chain index, cumulative score, seed-phase ticket records, bans and snapshots), written in atomic batches without a disk flush per block; durability is recovered at checkpoint boundaries. The UTXO set is held in memory with an index by script and a value-ordered stake index for the eligibility check. A node runs in one of three modes: archive, pruned (the default, 100 GB target with a 20,000-block floor; pruned nodes can mine), or started from a UTXO snapshot. An archive grows by roughly 2 TB a year at full 2 MiB blocks; a pruned node needs around 15–20 GB plus about 0.7 GB of headers per year.</p>
+<p>The node serves one authenticated JSON-RPC interface (port 4521) with integer-only values. It is not Bitcoin-compatible: there is no difficulty, nonce, bits field or median time; headers expose <code>miner_pubkey</code>, <code>election_seed</code>, <code>horizon_start</code>, <code>slot_reveal</code> and <code>slot_path</code> (the miner signature is in the raw block only), and <code>getstakeaddress</code> reports each horizon's stake address, eligibility window and counted output.</p>
+<h2 id="14-governance-and-upgrades">14. Governance and upgrades<a class="heading-anchor" href="#14-governance-and-upgrades" aria-label="Link to &quot;14. Governance and upgrades&quot;">#</a></h2>
+<p>Spek has one upgrade mechanism: a block <code>version</code> that only increases, activated at a fixed flag height in a schedule compiled into the node and empty at launch. A signature-scheme or header-format change is always a hard fork and uses this path; tightening a rule uses it too, coordinated off chain. There is no version-bit signalling. Process governance is off chain and social; every full node enforces every rule; each operator independently adopts or declines an update.</p>
+<h2 id="15-threat-model">15. Threat model<a class="heading-anchor" href="#15-threat-model" aria-label="Link to &quot;15. Threat model&quot;">#</a></h2>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mechanism</th>
+<th>Residual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score grinding</td>
+<td>Score inputs (key, commitment, reveal) all fixed before the beacon; election seed binds only parent election seed + key + reveal; no producer-malleable bytes</td>
+<td>Withholding at a beacon height: 0.3–0.6% of an attacker's own wins over all epochs, no compounding</td>
+</tr>
+<tr>
+<td>Stake shifting into a pre-chosen key</td>
+<td>Stake counts only below a cutoff a full epoch before the beacon height</td>
+<td>Closed</td>
+</tr>
+<tr>
+<td>Commitment copying / reveal replay</td>
+<td>Key bound into the score preimage and every commitment leaf</td>
+<td>Closed</td>
+</tr>
+<tr>
+<td>Predicted winners (targeted DoS, bribery)</td>
+<td>Scores unknown until each header is published</td>
+<td>None for live slots</td>
+</tr>
+<tr>
+<td>Sybil (post-seed)</td>
+<td>One output ≥ 80% of reward per draw, aged 24–36 h</td>
+<td>Attack share = capital share; concentration risk is economic, not protocol</td>
+</tr>
+<tr>
+<td>Sybil (seed phase)</td>
+<td>RandomX ticket per stake address per 3-day round, recorded on chain before it counts; RandomX with Spek's own parameters, so hardware built for other RandomX chains does not apply</td>
+<td>Launch seats: the search opens at a Bitcoin block, so every searcher starts together and no record exists before it; the organiser could leave a listed entry out of the sealed list, which the public listings and the witnessed seal digest expose. No party has an informed abort: the launch beacons depend on a Bitcoin block mined after the seal</td>
+</tr>
+<tr>
+<td>Private-branch rewrite</td>
+<td>Fixed draws; pins bound running nodes; checkpoints bound fresh nodes</td>
+<td>A private branch chooses its own beacons: break-even attacker share 0.45–0.47 within the pin; about 0.42 for a fresh node without checkpoints</td>
+</tr>
+<tr>
+<td>Bought or dormant keys signing old branches</td>
+<td>Restoration pins and compiled checkpoints</td>
+<td>Unbonded stake cannot bound this; such keys add to an attacker's share at no cost to the seller</td>
+</tr>
+<tr>
+<td>Clock steering</td>
+<td>Authenticated Roughtime quorum, operator diversity, raw-clock projection, 5 s step bound, mining hold</td>
+<td>A quorate colluding cohort can walk the clock 5 s per sync; pool composition is the security parameter (§17). Roughtime servers sign with Ed25519, which is not post-quantum: a quantum attacker could forge time. This is known, and there are a few years to address it</td>
+</tr>
+<tr>
+<td>Equivocation</td>
+<td>One entry per key per attempt; different content → slot cancelled, proof gossiped</td>
+<td>None beyond the forfeited slot</td>
+</tr>
+<tr>
+<td>Header / body flood</td>
+<td>Claimed-score pre-filter, structural gates before signature; per-peer verify caps; pull-only bodies; rate limits; escalating IP bans</td>
+<td>Griefing bounded; winning power unaffected by flood rate</td>
+</tr>
+<tr>
+<td>Stake-address dust</td>
+<td>One counted output per draw, value-ordered index</td>
+<td>Each extra step costs a full stake unit</td>
+</tr>
+<tr>
+<td>Validation-cost amplification</td>
+<td>Per-input signature budget charged before verify; Level V witness bytes weighted by ρ; cache of valid signatures; full validation for top-ranked candidates only</td>
+<td>Adversarial leaf ≈ 1.27× honest signature density</td>
+</tr>
+<tr>
+<td>Deep reorg / long range</td>
+<td>Depth-4 comparison, bounded rollback, untruncated chainwork, restoration pins, checkpoint barrier</td>
+<td>Partitions longer than the pin lag need operator recovery</td>
+</tr>
+<tr>
+<td>Fake-chain mining halt</td>
+<td>Mining never paused by download</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Eclipse during sync</td>
+<td>8-peer minimum (1 with a built-in bootstrap node), diversity caps, no relaxing flag</td>
+<td>Small deployments depend on bootstrap reachability for deep-fork resolution</td>
+</tr>
+<tr>
+<td>Witness malleability</td>
+<td>Identities exclude witness bytes: transaction ids and block hashes do not cover signatures, the merkle root commits to the exact witnesses; canonical encoding, minimal numbers, clean stack, minimal conditionals, one signature rule</td>
+<td>SQIsign signatures themselves stay malleable: a mempool copy may differ from the one mined, which costs a re-verification, never an identity</td>
+</tr>
+<tr>
+<td>Harvest-now quantum attack</td>
+<td>Keys hidden behind hashes until spent; Level V for long-lived custody</td>
+<td>Stake keys are public in headers; the payout rule keeps one stake unit per key</td>
+</tr>
+<tr>
+<td>Quantum or classical break of SQIsign</td>
+<td>SQIsign everywhere; independent slot secrets; reserved version selectors</td>
+<td>Depends on SQIsign holding (a NIST Round 3 candidate, not a NIST standard; implementation audited only by AI models); a Level I break allows equivocation cancellations and history rewrites down to the pin, not live-slot theft; migration is a scheduled hard fork</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="16-comparison">16. Comparison<a class="heading-anchor" href="#16-comparison" aria-label="Link to &quot;16. Comparison&quot;">#</a></h2>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th></th>
+<th>Bitcoin (PoW)</th>
+<th>Typical bonded PoS</th>
+<th>Spek</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Category</td>
+<td>Proof of work</td>
+<td>Bonded proof of stake</td>
+<td>Unbonded proof of stake (RandomX tickets for the first 45 days)</td>
+</tr>
+<tr>
+<td>Block schedule</td>
+<td>Random, ~10 min average</td>
+<td>Slots, often 12 s with committees</td>
+<td>Fixed 30 s slots; a block (or null) exists for every slot</td>
+</tr>
+<tr>
+<td>Producer selection</td>
+<td>First valid nonce</td>
+<td>VRF / committee rotation over bonded stake</td>
+<td>Highest hash distance over a beacon, the key and a committed per-height secret; one draw per stake output</td>
+</tr>
+<tr>
+<td>Leader schedule known in advance</td>
+<td>No</td>
+<td>Often an epoch ahead</td>
+<td>No: each score is unknown until its header is published</td>
+</tr>
+<tr>
+<td>Cost of a ticket</td>
+<td>Energy per attempt, perpetual</td>
+<td>Bonded, slashable capital</td>
+<td>One aged output at the stake address (a threshold, never locked); RandomX compute in the seed phase</td>
+</tr>
+<tr>
+<td>Penalty for attacking</td>
+<td>Hardware and energy spent</td>
+<td>Slashing</td>
+<td>No slashing; the attacker's purchases raise the price it pays, and its held stake loses value when the attack is seen</td>
+</tr>
+<tr>
+<td>Honest operating cost</td>
+<td>Dominant</td>
+<td>Low</td>
+<td>~Zero beyond a node</td>
+</tr>
+<tr>
+<td>Settlement</td>
+<td>Probabilistic, ~60 min convention</td>
+<td>Finality gadget, minutes</td>
+<td>Confirmations sized to an attacker share (68 min against one third); restoration pin at 33–67 h; checkpoint barrier</td>
+</tr>
+<tr>
+<td>Timestamp</td>
+<td>Declared, median-time-past rule</td>
+<td>Slot-derived</td>
+<td>Derived; no header field</td>
+</tr>
+<tr>
+<td>Signatures</td>
+<td>ECDSA / Schnorr</td>
+<td>BLS / Ed25519</td>
+<td>SQIsign Level I, Level V for custody (post-quantum)</td>
+</tr>
+<tr>
+<td>Public keys on chain</td>
+<td>Exposed by many output types</td>
+<td>Exposed</td>
+<td>Hidden until spent (stake keys excepted)</td>
+</tr>
+<tr>
+<td>Empty-network liveness</td>
+<td>Chain halts</td>
+<td>Skipped slots</td>
+<td>Deterministic null block, score 0</td>
+</tr>
+<tr>
+<td>Upgrades</td>
+<td>BIP-9 / BIP-8 signalling</td>
+<td>Varies, often on-chain</td>
+<td>Block version + flag height only</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Taken together</strong>, Spek offers:</p>
+<ul>
+<li>no ASIC race;</li>
+<li>no lock-up or slashing;</li>
+<li>an ordinary computer is enough (the published minimum is 4 dedicated cores, 8 GB of RAM and an SSD);</li>
+<li>one funded stake output keeps a key eligible for its whole 8.4-year horizon;</li>
+<li>each stake unit gets exactly one draw per slot.</li>
+</ul>
+<h2 id="17-known-limitations-and-open-items">17. Known limitations and open items<a class="heading-anchor" href="#17-known-limitations-and-open-items" aria-label="Link to &quot;17. Known limitations and open items&quot;">#</a></h2>
+<p>As of this version:</p>
+<ul>
+<li><strong>SQIsign is not a NIST standard.</strong> It is a Round 3 candidate in NIST's additional-signature process (§8.1). If later cryptanalysis weakens it, or NIST drops it, Spek's only remedy is a signature-scheme migration through a hard fork (§8.5, §14). Every operator chooses for themselves whether to adopt that fork.</li>
+<li><strong>No independent audit.</strong> The code, including the vendored SQIsign and RandomX C and the FFI boundary, has been audited only by AI models (Claude). No human security firm, cryptographer, or SQIsign author has reviewed it. Mainnet is its first exposure to outside attackers. The uniqueness of the slot reveal (§4.1) is the property most worth a cryptographer's time: a related hash-based construction for proof-of-stake election, X-VRF, was later broken on exactly that property.</li>
+<li><strong>Signing after the fact.</strong> Unbonded stake cannot stop a key that held stake at a fork point from signing a branch from that point later, including keys whose owners have since sold. Only restoration pins (running nodes) and compiled checkpoints (fresh nodes) bound it. On its own private branch an attacker also knows each beacon before that beacon's stake cutoff; simulation puts the break-even share at 0.45–0.47 for a branch inside the pin, and at about 0.42 (with a million candidate fits) for a fresh node that has no checkpoint past the fork.</li>
+<li><strong>Pins advance without network evidence.</strong> A restoration pin moves with the node's own tip, so a node partitioned, or mining alone, for longer than the pin lag (33–67 h) pins its own branch and refuses the other side on reconnect.</li>
+<li><strong>No fast finality.</strong> Settlement is by confirmations (Appendix B) until the pin; there is no finality gadget.</li>
+<li><strong>Download-time checks during the seed phase.</strong> Seed-phase eligibility needs the block bodies that hold the ticket records, so the header stage of a download checks signatures and horizons but no RandomX work. A fake seed-phase header chain is therefore as cheap to build as a fake post-seed one; the eligibility check before any rollback (§12.1), pins, block validation and the download's per-candidate budgets bound both.</li>
+<li><strong>Stake keys are hot and public.</strong> Every header shows its stake key, and the key lives on the mining machine. The payout rule keeps one stake unit per horizon at that address (two for the year before a renewal), and everything else goes to a hidden-key payout address. A node with no payout address configured keeps paying its stake address and warns daily.</li>
+<li><strong>Roughtime operator count.</strong> The built-in pool has four independent operators against a quorum of three: any one operator may be offline or rotating keys and syncs still complete, but with one offline every remaining operator must answer, and two colluding operators can steer the vote median (by at most the 5-second step bound per applied sync). The remedy is more independently operated servers, never a lower quorum.</li>
+<li><strong>Network-wide multi-slot outage</strong> stops the chain until an operator fills null blocks (§5). Single-node outages heal by themselves.</li>
+<li><strong>Withholding the top five.</strong> A node ranks at most five peer headers per slot plus its own (§5). If the five best headers of a slot are all withheld, every node that holds them settles the same canonical null: no body in the top five is committable, and a node's own block ranked sixth is skipped because no peer retains it, so committing it would leave each miner on a different block. Safety holds (one block per height; a node the withheld headers did not reach commits a real block, and any real block outranks the null), the slot's liveness is lost, and the withholder forfeits the slot's rewards. With an attacker share <em>p</em> of the draws for a slot, about <em>p</em>⁵ of slots are nulled; nulling a fraction <em>f</em> takes <em>p</em> = <em>f</em>^(1/5), that is <em>p</em>/(1−<em>p</em>) times the honest draw count: about 0.66× for 1% of slots, 1.7× for 10%, 6.7× for 50%. These are model estimates (independent uniform scores, every withheld header reaching every node), not simulation results. Each draw costs a recorded seed ticket per round in the seed phase and an aged stake output after it (§7).</li>
+<li><strong>Multiple draws per operator.</strong> One key per node is policy, not consensus. An operator holding <em>K</em> funded stake addresses (on one key or several) fields <em>K</em> draws for a one-time, refundable <em>K</em> × requirement. Whether the network's security then rests on capital held rather than on running costs turns on this, and it still needs a full economic analysis.</li>
+<li><strong>Not included:</strong> SPV proofs for light clients, native IPv6, data-availability sampling, on-chain soft-fork signalling, verification of a UTXO snapshot after sync, and NTS (authenticated NTP).</li>
+<li><strong>Hard checkpoints</strong> are a permanent trust assumption for nodes with no history of their own (weak subjectivity): such a node trusts the release's compiled-in pins and the checkpoint signer set. They have no sunset; the signer set, its threshold and the signing procedure are part of the launch disclosure.</li>
+</ul>
+<h2 id="appendix-a-parameter-reference">Appendix A. Parameter reference<a class="heading-anchor" href="#appendix-a-parameter-reference" aria-label="Link to &quot;Appendix A. Parameter reference&quot;">#</a></h2>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L52" title="crates/spek-config/src/params.rs, line 52"><code>TIMESLOT_DURATION</code></a></td>
+<td>30 s</td>
+<td>Block time; height = slot</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-network/src/propagation.rs#L106" title="crates/spek-network/src/propagation.rs, line 106"><code>PHASE2_START_MS</code></a></td>
+<td>6,000</td>
+<td>Headers-only before; bodies after</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L61" title="crates/spek-config/src/params.rs, line 61"><code>MAX_BLOCK_SIZE</code></a></td>
+<td>2,097,152 B</td>
+<td>Header plus the sum of transaction vsizes</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L110" title="crates/spek-config/src/params.rs, line 110"><code>MAX_TRANSACTIONS_PER_BLOCK</code></a></td>
+<td>8,000</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L301" title="crates/spek-config/src/params.rs, line 301"><code>PROPAGATION_FORK_WINDOW</code></a></td>
+<td>4</td>
+<td>Deepest fork resolved on the propagation path; deeper forks go to download</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-core/src/chain.rs#L4238" title="crates/spek-core/src/chain.rs, line 4238"><code>PROPAGATION_FORK_MAX_ROLLBACK</code></a></td>
+<td>5</td>
+<td>Hot-path reorg bound</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L353" title="crates/spek-config/src/params.rs, line 353"><code>CHECKPOINT_GRID_INTERVAL</code></a></td>
+<td>4,000 blocks</td>
+<td>~33.3 h; restoration pin trails the tip by 33–67 h</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L302" title="crates/spek-config/src/params.rs, line 302"><code>election_epoch_blocks</code> (L)</a></td>
+<td>1,440</td>
+<td>12 h; beacon epoch</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L303" title="crates/spek-config/src/params.rs, line 303"><code>slot_segment_blocks</code> (S)</a></td>
+<td>8,640</td>
+<td>3 days; one slot-secret hash chain</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-core/src/slot_secret.rs#L56" title="crates/spek-core/src/slot_secret.rs, line 56"><code>SLOT_HORIZON_DEPTH</code> (d)</a></td>
+<td>10</td>
+<td>1,024 segments per horizon, ~8.4 years</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-core/src/election.rs#L426" title="crates/spek-core/src/election.rs, line 426">Stake age</a></td>
+<td>2L+2 to 3L+1 blocks</td>
+<td>About 24–36 h from creation to first counted height</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-node/src/node/stake_horizons.rs#L86" title="crates/spek-node/src/node/stake_horizons.rs, line 86">Horizon renewal lead</a></td>
+<td>122 segments</td>
+<td>~1 year; node policy, operator-configurable</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L756" title="crates/spek-config/src/params.rs, line 756"><code>coinbase_maturity</code></a></td>
+<td>3,000 blocks</td>
+<td>~25 h</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L741" title="crates/spek-config/src/params.rs, line 741"><code>initial_block_reward</code></a></td>
+<td>50 coins</td>
+<td>Block 1</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L742" title="crates/spek-config/src/params.rs, line 742"><code>halving_interval</code></a></td>
+<td>4,200,000</td>
+<td>Counted from block 1</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L743" title="crates/spek-config/src/params.rs, line 743"><code>tail_reward</code></a></td>
+<td>1 bit</td>
+<td>Floor until cap</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L744" title="crates/spek-config/src/params.rs, line 744"><code>max_supply</code></a></td>
+<td>450,000,000 coins</td>
+<td>Exactly filled</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/allocation.rs#L166" title="crates/spek-config/src/allocation.rs, line 166"><code>genesis_reward</code></a></td>
+<td>30,000,000 coins</td>
+<td>Founders 22.5M + stewardship 7.5M</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/allocation.rs#L174" title="crates/spek-config/src/allocation.rs, line 174"><code>vesting_interval_blocks</code></a></td>
+<td>1,051,200</td>
+<td>~1 year</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L746" title="crates/spek-config/src/params.rs, line 746"><code>seed_phase_blocks</code></a></td>
+<td>129,600</td>
+<td>45 days</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L754" title="crates/spek-config/src/params.rs, line 754"><code>seed_ticket_round_blocks</code> (W)</a></td>
+<td>8,640</td>
+<td>3 days; 15 rounds</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L440" title="crates/spek-config/src/params.rs, line 440"><code>SEED_TICKET_TARGET_D</code></a></td>
+<td>2^228</td>
+<td>~3 tickets/round on a 2018-era 8-core desktop</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L304" title="crates/spek-config/src/params.rs, line 304"><code>ticket_records_per_block_max</code></a></td>
+<td>16</td>
+<td>Seed-phase coinbase records per block</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-consensus/src/validation/common.rs#L141" title="crates/spek-consensus/src/validation/common.rs, line 141">Coin requirement</a></td>
+<td>max(80% reward, 0.1 coin)</td>
+<td>Post-seed; one output at the stake address, aged</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L509" title="crates/spek-config/src/params.rs, line 509"><code>FEE_FLOOR</code> (era 0)</a></td>
+<td>250,000 bits</td>
+<td>Flat ≤ 3,000 vB, linear above</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L93" title="crates/spek-config/src/params.rs, line 93">ρ (Level V witness weight)</a></td>
+<td>151/50 = 3.02</td>
+<td>vsize multiplier for Level V input witness bytes</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-crypto/src/sqisign_ffi.rs#L63" title="crates/spek-crypto/src/sqisign_ffi.rs, line 63">SQIsign Level I pk / sig / sk</a></td>
+<td>83 / 200 / 270 B</td>
+<td>Headers, mining keys, default outputs</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-crypto/src/sqisign_l5.rs#L64" title="crates/spek-crypto/src/sqisign_l5.rs, line 64">SQIsign Level V pk / sig / sk</a></td>
+<td>169 / 406 / 549 B</td>
+<td>Opt-in custody; allocation, council, guardians</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-core/src/slot_secret.rs#L86" title="crates/spek-core/src/slot_secret.rs, line 86">Miner key file</a></td>
+<td>385 B</td>
+<td>Level I secret key, public key, 32-byte slot seed</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-crypto/src/lib.rs#L97" title="crates/spek-crypto/src/lib.rs, line 97">Header / signed prefix</a></td>
+<td>743 / 543 B</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-script/src/hashed_commit.rs#L64" title="crates/spek-script/src/hashed_commit.rs, line 64">Hashed output / plain ScriptCommit</a></td>
+<td>34 / 118 B</td>
+<td></td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-consensus/src/timesync.rs#L197" title="crates/spek-consensus/src/timesync.rs, line 197">Roughtime sync interval</a></td>
+<td>1 h learning, 4 h once the rate is confirmed (≤ 5 ppm)</td>
+<td>Rate correction clamped at 250 ppm, at most 50 ppm per sync</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-consensus/src/timesync.rs#L101" title="crates/spek-consensus/src/timesync.rs, line 101">Roughtime quorum / outlier / step</a></td>
+<td>3 operators (floor 3) / 2 s / 5 s</td>
+<td>One vote per operator</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-network/src/config.rs#L184" title="crates/spek-network/src/config.rs, line 184">Peers: per IP / per netgroup (in, out) / ASN cap / outbound / total</a></td>
+<td>1 / 13, 6 / 34% / 20 / 60</td>
+<td>Mainnet; the netgroup cap is a third of each direction's cap</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-network/src/sync/constants.rs#L205" title="crates/spek-network/src/sync/constants.rs, line 205">IBD minimum peers</a></td>
+<td>8 (1 with bootstrap seed)</td>
+<td>Not overridable</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-node/src/node/constants.rs#L556" title="crates/spek-node/src/node/constants.rs, line 556">Ban ladder</a></td>
+<td>1 d → 4 d → 90 d</td>
+<td>Checkpoint divergence capped 16 d</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-config/src/params.rs#L218" title="crates/spek-config/src/params.rs, line 218">Ports (mainnet)</a></td>
+<td>4520 p2p / 4521 JSON-RPC</td>
+<td>Testnet 14500s, regtest 24500s</td>
+</tr>
+<tr>
+<td><a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/crates/spek-script/src/vm.rs#L195" title="crates/spek-script/src/vm.rs, line 195">Script limits</a></td>
+<td>10,000 B / 1,000 items / 520 B / depth 100 / proof 128</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="appendix-b-confirmations-against-an-attacker-share">Appendix B. Confirmations against an attacker share<a class="heading-anchor" href="#appendix-b-confirmations-against-an-attacker-share" aria-label="Link to &quot;Appendix B. Confirmations against an attacker share&quot;">#</a></h2>
+<p>Probability that a transaction at <em>k</em> confirmations is ever reversible, for an attacker holding share <em>q</em> of the draws who may choose its fork point in hindsight. The figures come from a race model: the best of <em>n</em> independent uniform draws falls short of the maximum score by an exponentially distributed amount, the attacker's branch wins a stretch of heights when its summed scores exceed the honest chain's, and the probabilities are closed forms checked against Monte Carlo simulation.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>q</th>
+<th>k = 6</th>
+<th>10</th>
+<th>30</th>
+<th>60</th>
+<th>120</th>
+<th>240</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.10</td>
+<td>3.6e-4</td>
+<td>4.8e-6</td>
+<td>3.8e-15</td>
+<td>1.3e-28</td>
+<td>2.3e-55</td>
+<td>~0</td>
+</tr>
+<tr>
+<td>0.20</td>
+<td>1.8e-2</td>
+<td>2.4e-3</td>
+<td>2.0e-7</td>
+<td>2.2e-13</td>
+<td>3.7e-25</td>
+<td>1.4e-48</td>
+</tr>
+<tr>
+<td>0.33</td>
+<td>2.4e-1</td>
+<td>1.3e-1</td>
+<td>7.3e-3</td>
+<td>1.4e-4</td>
+<td>6.4e-8</td>
+<td>1.8e-14</td>
+</tr>
+<tr>
+<td>0.40</td>
+<td>5.5e-1</td>
+<td>4.3e-1</td>
+<td>1.5e-1</td>
+<td>3.5e-2</td>
+<td>2.3e-3</td>
+<td>1.3e-5</td>
+</tr>
+</tbody>
+</table></div>
+<p>Confirmations for under one reversible slot per century (1,051,200 slots a year):</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>q</th>
+<th>10%</th>
+<th>20%</th>
+<th>25%</th>
+<th>30%</th>
+<th>33%</th>
+<th>40%</th>
+<th>45%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>k</td>
+<td>16 (8 min)</td>
+<td>37 (18 min)</td>
+<td>58 (29 min)</td>
+<td>95 (48 min)</td>
+<td>136 (68 min)</td>
+<td>412 (3.4 h)</td>
+<td>1,686 (14 h)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="references">References<a class="heading-anchor" href="#references" aria-label="Link to &quot;References&quot;">#</a></h2>
+<p>External sources for claims in this paper. Status claims were read on the cited pages in November 2026 and can change.</p>
+<ol>
+<li>NIST, <em>Round 3 Additional Signatures</em>, Post-Quantum Cryptography project page, <a href="https://csrc.nist.gov/projects/pqc-dig-sig/round-3-additional-signatures">https://csrc.nist.gov/projects/pqc-dig-sig/round-3-additional-signatures</a>. Lists the Round 3 candidates (SQIsign, HAWK, MQOM, SDitH, MAYO, QR-UOV, SNOVA, UOV, FAEST) and records HAWK as withdrawn (§8.1).</li>
+<li>NIST, <em>Status Report on the Second Round of the Additional Digital Signature Schemes for the NIST Post-Quantum Cryptography Standardization Process</em>, NIST IR 8610. The report behind the advance to Round 3 (§8.1).</li>
+<li>SQIsign submission team, SQIsign, <a href="https://sqisign.org">https://sqisign.org</a>. The scheme, its parameter sets and the reference implementation Spek vendors (§8).</li>
+<li>NIST, FIPS 204 (ML-DSA) and FIPS 205 (SLH-DSA), the post-quantum signature standards NIST has published, named in the disclosure and in §8.1.</li>
+<li><em>X-VRF</em>, a post-quantum verifiable random function built on XMSS, IACR ePrint 2021/302, <a href="https://eprint.iacr.org/2021/302">https://eprint.iacr.org/2021/302</a>; and O. Bodaghi and R. Safavi-Naini, <em>Breaking X-VRF, a Post-Quantum Verifiable Random Function</em>, Financial Cryptography 2024 (short paper), <a href="https://fc24.ifca.ai/preproceedings/213.pdf">https://fc24.ifca.ai/preproceedings/213.pdf</a>. The break is of the uniqueness property, the property the slot reveal of §4.1 depends on (§17).</li>
+<li>RandomX, <a href="https://github.com/tevador/RandomX">https://github.com/tevador/RandomX</a>, the memory-hard hash function Spek's seed tickets are parameterised from (§7.2).</li>
+<li>BLAKE3, <a href="https://github.com/BLAKE3-team/BLAKE3">https://github.com/BLAKE3-team/BLAKE3</a>, the hash function used throughout.</li>
+</ol>
+<hr>
+<p><em>This document describes the implementation as it exists and is not an offer of any kind.</em></p>
+</article>
+  <section class="doc-versions" data-numbers="exempt">
+    <h2 id="versions">Versions</h2>
+    <ul>
+      <li><a href="/whitepaper/v1.0/">v1.0</a>: First published version.</li>
+    </ul>
+  </section>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

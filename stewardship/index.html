@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Stewardship · Spek</title>
+    <meta name="description" content="The Spek genesis allocation exactly as built: the stewardship fund, the founder tranches, their unlock heights, quorums and vetoes.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/">How it works</a>
+              </li><li>
+                <a href="/stewardship/" aria-current="page">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <h1>Stewardship</h1>
+  <div class="doc-stamp" data-numbers="exempt" data-document="node-reference" data-pinned="true">
+  <p>
+    The allocation below was generated from the <a href="https://github.com/SpekCoin/Spek/blob/ce90957112e415a8092177ddb943c52162062cb1">node source</a>.
+  </p>
+</div>
+
+  <div class="prose">
+    <p class="page-intro">
+      The genesis block mints 30,000,000 coins once, and every block after it pays only the ordinary reward. The
+      allocation is two parts, each in vaults whose spending rules are fixed in consensus.
+    </p>
+
+    <h2 id="fund">The stewardship fund: 7,500,000 coins</h2>
+    <ul>
+      <li>A launch slice of 1,500,000 coins, spendable once coinbase maturity has passed, so grants and audits can start at launch, and ten tranches that unlock over time (table below).</li>
+      <li>One council of 5 keys spends with any 3. There are no reserve keys and no recovery path.</li>
+      <li>Every spend is staged first and waits 86,400 blocks (about 30 days) in public view; 3 of 5 guardians can cancel it back to the vault in that time.</li>
+    </ul>
+
+    <h2 id="founders">The founders: 22,500,000 coins</h2>
+    <ul>
+      <li>The founders, each with their own vault spent by 2 of 3 of that founder's keys.</li>
+      <li>Each founder's share unlocks in five yearly tranches.</li>
+      <li>Staged founder spends wait the same 86,400 blocks, and any 1 of the founder's 3 guardians can cancel one.</li>
+    </ul>
+    <aside class="callout callout-caveat" role="note">
+  <p class="callout-title">What is not on this page yet</p>
+  
+      <p>
+        Council members and their key fingerprints, the payout policy and the payout ledger will be published soon.
+        Every spend from these outputs will be listed by transaction id and reviewable.
+      </p>
+    
+</aside>
+  </div>
+
+  <h2 id="layout">Genesis outputs and unlock heights</h2>
+  <div class="table-scroll" tabindex="0">
+    <table>
+      <thead>
+        <tr><th scope="col">Output</th><th scope="col">Holder</th><th scope="col">Amount</th><th scope="col">Unlocks at height</th><th scope="col">About</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+            <td data-numbers="exempt">vout 0</td>
+            <td>Genesis message (unspendable)</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 1</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>1,051,200</td>
+            <td>365 days</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 2</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>1,051,200</td>
+            <td>365 days</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 3</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>1,051,200</td>
+            <td>365 days</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 4</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>2,102,400</td>
+            <td>2 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 5</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>2,102,400</td>
+            <td>2 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 6</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>2,102,400</td>
+            <td>2 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 7</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>3,153,600</td>
+            <td>3 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 8</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>3,153,600</td>
+            <td>3 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 9</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>3,153,600</td>
+            <td>3 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 10</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>4,204,800</td>
+            <td>4 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 11</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>4,204,800</td>
+            <td>4 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 12</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>4,204,800</td>
+            <td>4 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 13</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>5,256,000</td>
+            <td>5 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 14</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>5,256,000</td>
+            <td>5 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 15</td>
+            <td>Founder tranche</td>
+            <td>1,500,000 coins</td>
+            <td>5,256,000</td>
+            <td>5 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 16</td>
+            <td>Fund launch slice</td>
+            <td>1,500,000 coins</td>
+            <td>after maturity</td>
+            <td></td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 17</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>2,102,400</td>
+            <td>2 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 18</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>4,204,800</td>
+            <td>4 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 19</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>6,307,200</td>
+            <td>6 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 20</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>8,409,600</td>
+            <td>8 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 21</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>10,512,000</td>
+            <td>10 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 22</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>12,614,400</td>
+            <td>12 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 23</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>14,716,800</td>
+            <td>14 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 24</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>16,819,200</td>
+            <td>16 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 25</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>18,921,600</td>
+            <td>18 years</td>
+          </tr><tr>
+            <td data-numbers="exempt">vout 26</td>
+            <td>Fund tranche</td>
+            <td>600,000 coins</td>
+            <td>21,024,000</td>
+            <td>20 years</td>
+          </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="prose">
+    <p>
+      Spending one before its unlock height is invalid in consensus.
+    </p>
+  </div>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

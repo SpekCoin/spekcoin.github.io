@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Null blocks · Spek</title>
+    <meta name="description" content="What a Spek null block is: the deterministic block every node builds for a quiet slot, why it is not a failure, and why a late real block outranks it.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Null blocks</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    A block exists for every 30-second slot since genesis, whether or not anyone produced one. When a slot closes with
+    no candidate that can be committed, it is a <strong>quiet slot</strong>, and every node builds the same
+    <strong>null block</strong> for it. The chain never stalls.
+  </p>
+
+  <h2 id="what">What a null block is</h2>
+  <p>
+    The null block for a height and parent is fixed: version 1, all-zero miner key, signature and slot fields, zero
+    merkle root, no transactions and no coinbase. Its election seed is derived by the normal rule with a fixed null
+    identity and an all-zero slot secret, so the beacon chain continues unbroken. Each node constructs it rather than
+    receiving it, so nothing crosses the network. Null blocks mint nothing and are stored and served like ordinary
+    blocks.
+  </p>
+
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 190" role="img" aria-labelledby="null-chain-t null-chain-d">
+  <title id="null-chain-t">A null block in the chain</title>
+  <desc id="null-chain-d">
+    Three consecutive blocks. The middle one is a null block with score 0 and no transactions. Each block points to its
+    parent, and the election seed continues through the null block.
+  </desc>
+  <defs>
+    <marker id="null-chain-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path class="fig-arrowhead" d="M0,0 L8,4 L0,8 z"></path>
+    </marker>
+  </defs>
+  <rect class="fig-real" x="15" y="30" width="90" height="74"></rect>
+  <rect class="fig-null" x="135" y="30" width="90" height="74"></rect>
+  <rect class="fig-real" x="255" y="30" width="90" height="74"></rect>
+  <text class="fig-text fig-strong" x="60" y="54" text-anchor="middle">slot h−1</text>
+  <text class="fig-text" x="60" y="74" text-anchor="middle">winner</text>
+  <text class="fig-text fig-muted" x="60" y="92" text-anchor="middle">score ≥ 1</text>
+  <text class="fig-text fig-copper" x="180" y="54" text-anchor="middle">slot h</text>
+  <text class="fig-text" x="180" y="74" text-anchor="middle">null block</text>
+  <text class="fig-text fig-muted" x="180" y="92" text-anchor="middle">score 0</text>
+  <text class="fig-text fig-strong" x="300" y="54" text-anchor="middle">slot h+1</text>
+  <text class="fig-text" x="300" y="74" text-anchor="middle">winner</text>
+  <text class="fig-text fig-muted" x="300" y="92" text-anchor="middle">score ≥ 1</text>
+  <line class="fig-line" x1="135" y1="67" x2="107" y2="67" marker-end="url(#null-chain-arrow)"></line>
+  <line class="fig-line" x1="255" y1="67" x2="227" y2="67" marker-end="url(#null-chain-arrow)"></line>
+  <text class="fig-text fig-muted" x="120" y="124" text-anchor="middle">prev_block</text>
+  <line class="fig-curve fig-thin" x1="60" y1="150" x2="300" y2="150"></line>
+  <circle class="fig-dot" cx="60" cy="150" r="4"></circle>
+  <circle class="fig-dot" cx="180" cy="150" r="4"></circle>
+  <circle class="fig-dot" cx="300" cy="150" r="4"></circle>
+  <text class="fig-text" x="180" y="176" text-anchor="middle">election seed continues</text>
+</svg>
+  
+  <figcaption>A null block in the chain: it links to its parent and carries the election seed forward like any block, with score 0 and no transactions.</figcaption>
+</figure>
+
+  <h2 id="not-a-failure">Why a quiet slot is not a failure</h2>
+  <p>
+    A slot can be quiet because no eligible miner happened to be online, because none of the top candidates' bodies
+    arrived and validated in time, or because a round's tickets came up blank. The protocol expects this: rather than
+    wait, every node
+    settles the slot the same way and moves on. In the first 36 hours only holders of genesis ticket records can mine,
+    so quiet slots then are normal.
+  </p>
+  <p>
+    Quiet slots are silent and deterministic, so a chain whose height and hashes agree across nodes says little about
+    how well the nodes underneath are connected; that has to be read from each node's own telemetry. For the same
+    reason, silence is never treated as evidence that a peer misbehaved.
+  </p>
+
+  <h2 id="late-block">Why a late real block outranks it</h2>
+  <p>
+    A null block's score is defined as 0, strictly below the lowest real score, 1. Any real block for that height
+    therefore outranks it, and if a late winner surfaces, fork choice replaces the null in a reorg of depth 1, with no
+    ban and no penalty for anyone.
+  </p>
+
+  <aside class="callout callout-caveat" role="note">
+  <p class="callout-title">Two limits</p>
+  
+    <p>
+      Settlement at each boundary fills exactly one slot. If every node misses two or more boundaries at once, in a
+      coordinated restart or a network-wide freeze, the chain stops until an operator fills the gap with null blocks
+      through an RPC call that is capped per call and refused whenever any peer proves a better chain exists. It cannot
+      be automatic: a single node cannot tell "the whole network was down" from "I was down". Single-node outages heal
+      by themselves.
+    </p>
+    <p>
+      A node ranks at most five peer headers per slot. An attacker holding share <var>p</var> of a slot's draws who
+      withholds the five best headers nulls about <var>p</var><sup>5</sup> of slots: safety holds, that slot's
+      liveness is lost, and the withholder forfeits the slot's rewards. Nulling 10% of slots takes about 1.7 times the
+      honest draw count. These are model estimates, not simulation results.
+    </p>
+  
+</aside>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/eligibility/" rel="prev">Previous: Eligibility</a>
+    <a href="/how-it-works/cryptography/" rel="next">Next: Cryptography</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

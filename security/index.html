@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Security · Spek</title>
+    <meta name="description" content="Who has reviewed Spek's code, the standardisation status of SQIsign, the threat model, and how bug bounty terms and release signing keys are published.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/" aria-current="page">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <h1>Security</h1>
+
+  <section aria-labelledby="reviews" class="prose">
+    <h2 id="reviews">Reviews</h2>
+    <p>
+      <strong>The code has been audited only by AI models (Claude).</strong> No human security firm,
+      cryptographer or SQIsign author has reviewed it before launch. That covers the Rust implementation, the vendored
+      SQIsign and RandomX C code, and the boundary between them. Mainnet is the code's first exposure to outside
+      attackers. Anthropic, the maker of Claude, is not a partner in this project and does not endorse it.
+    </p>
+    <p class="authorship">Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</p>
+    <p>
+      Outside reviews will be listed here as they are published, each labelled with who performed it. None has been
+      performed yet.
+    </p>
+  </section>
+
+  <section aria-labelledby="sqisign-status" class="prose">
+    <h2 id="sqisign-status">SQIsign standardisation status</h2>
+    <p>
+      SQIsign is not a NIST standard. NIST advanced nine candidates to Round 3 of its additional digital-signature
+      process in May 2026; one of them, HAWK, has since been withdrawn by its submission team, leaving eight, and
+      SQIsign is among them. That round is expected to last about two years, a draft standard could not
+      appear before about 2028, and SQIsign may be dropped. "Level I" and "Level V" refer to the security categories
+      the parameters target, not to any NIST approval. This section is updated at each NIST milestone.
+    </p>
+    <p>
+      If later cryptanalysis weakens SQIsign, or NIST drops it, Spek's only remedy is a migration to another signature
+      scheme through a hard fork, and every operator chooses for themselves whether to adopt it. The reasons for choosing
+      SQIsign, and what a Level I break would and would not allow, are on the
+      <a href="/how-it-works/cryptography/">Cryptography</a> page.
+    </p>
+  </section>
+
+  <section aria-labelledby="threat-model">
+    <h2 id="threat-model">Threat model</h2>
+    <p class="prose">
+      Each threat, the mechanism that addresses it, and what remains. This is section 15 of the
+      <a href="/whitepaper/v1.0/#15-threat-model">white paper</a>, verbatim; the open problems are in section 17, also on the
+      <a href="/how-it-works/limitations/">Limitations</a> page.
+    </p>
+    <div class="verbatim"><div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>Threat</th>
+<th>Mechanism</th>
+<th>Residual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score grinding</td>
+<td>Score inputs (key, commitment, reveal) all fixed before the beacon; election seed binds only parent election seed + key + reveal; no producer-malleable bytes</td>
+<td>Withholding at a beacon height: 0.3–0.6% of an attacker's own wins over all epochs, no compounding</td>
+</tr>
+<tr>
+<td>Stake shifting into a pre-chosen key</td>
+<td>Stake counts only below a cutoff a full epoch before the beacon height</td>
+<td>Closed</td>
+</tr>
+<tr>
+<td>Commitment copying / reveal replay</td>
+<td>Key bound into the score preimage and every commitment leaf</td>
+<td>Closed</td>
+</tr>
+<tr>
+<td>Predicted winners (targeted DoS, bribery)</td>
+<td>Scores unknown until each header is published</td>
+<td>None for live slots</td>
+</tr>
+<tr>
+<td>Sybil (post-seed)</td>
+<td>One output ≥ 80% of reward per draw, aged 24–36 h</td>
+<td>Attack share = capital share; concentration risk is economic, not protocol</td>
+</tr>
+<tr>
+<td>Sybil (seed phase)</td>
+<td>RandomX ticket per stake address per 3-day round, recorded on chain before it counts; RandomX with Spek's own parameters, so hardware built for other RandomX chains does not apply</td>
+<td>Launch seats: the search opens at a Bitcoin block, so every searcher starts together and no record exists before it; the organiser could leave a listed entry out of the sealed list, which the public listings and the witnessed seal digest expose. No party has an informed abort: the launch beacons depend on a Bitcoin block mined after the seal</td>
+</tr>
+<tr>
+<td>Private-branch rewrite</td>
+<td>Fixed draws; pins bound running nodes; checkpoints bound fresh nodes</td>
+<td>A private branch chooses its own beacons: break-even attacker share 0.45–0.47 within the pin; about 0.42 for a fresh node without checkpoints</td>
+</tr>
+<tr>
+<td>Bought or dormant keys signing old branches</td>
+<td>Restoration pins and compiled checkpoints</td>
+<td>Unbonded stake cannot bound this; such keys add to an attacker's share at no cost to the seller</td>
+</tr>
+<tr>
+<td>Clock steering</td>
+<td>Authenticated Roughtime quorum, operator diversity, raw-clock projection, 5 s step bound, mining hold</td>
+<td>A quorate colluding cohort can walk the clock 5 s per sync; pool composition is the security parameter (§17). Roughtime servers sign with Ed25519, which is not post-quantum: a quantum attacker could forge time. This is known, and there are a few years to address it</td>
+</tr>
+<tr>
+<td>Equivocation</td>
+<td>One entry per key per attempt; different content → slot cancelled, proof gossiped</td>
+<td>None beyond the forfeited slot</td>
+</tr>
+<tr>
+<td>Header / body flood</td>
+<td>Claimed-score pre-filter, structural gates before signature; per-peer verify caps; pull-only bodies; rate limits; escalating IP bans</td>
+<td>Griefing bounded; winning power unaffected by flood rate</td>
+</tr>
+<tr>
+<td>Stake-address dust</td>
+<td>One counted output per draw, value-ordered index</td>
+<td>Each extra step costs a full stake unit</td>
+</tr>
+<tr>
+<td>Validation-cost amplification</td>
+<td>Per-input signature budget charged before verify; Level V witness bytes weighted by ρ; cache of valid signatures; full validation for top-ranked candidates only</td>
+<td>Adversarial leaf ≈ 1.27× honest signature density</td>
+</tr>
+<tr>
+<td>Deep reorg / long range</td>
+<td>Depth-4 comparison, bounded rollback, untruncated chainwork, restoration pins, checkpoint barrier</td>
+<td>Partitions longer than the pin lag need operator recovery</td>
+</tr>
+<tr>
+<td>Fake-chain mining halt</td>
+<td>Mining never paused by download</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Eclipse during sync</td>
+<td>8-peer minimum (1 with a built-in bootstrap node), diversity caps, no relaxing flag</td>
+<td>Small deployments depend on bootstrap reachability for deep-fork resolution</td>
+</tr>
+<tr>
+<td>Witness malleability</td>
+<td>Identities exclude witness bytes: transaction ids and block hashes do not cover signatures, the merkle root commits to the exact witnesses; canonical encoding, minimal numbers, clean stack, minimal conditionals, one signature rule</td>
+<td>SQIsign signatures themselves stay malleable: a mempool copy may differ from the one mined, which costs a re-verification, never an identity</td>
+</tr>
+<tr>
+<td>Harvest-now quantum attack</td>
+<td>Keys hidden behind hashes until spent; Level V for long-lived custody</td>
+<td>Stake keys are public in headers; the payout rule keeps one stake unit per key</td>
+</tr>
+<tr>
+<td>Quantum or classical break of SQIsign</td>
+<td>SQIsign everywhere; independent slot secrets; reserved version selectors</td>
+<td>Depends on SQIsign holding (a NIST Round 3 candidate, not a NIST standard; implementation audited only by AI models); a Level I break allows equivocation cancellations and history rewrites down to the pin, not live-slot theft; migration is a scheduled hard fork</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+  </section>
+
+  <section aria-labelledby="bug-bounty" class="prose">
+    <h2 id="bug-bounty">Bug bounty</h2>
+    <p>
+      The bug bounty terms (scope, severity levels, how rewards are paid and the disclosure channel with its key) are
+      published on this page when they go live. Until then no bounty is offered.
+    </p>
+  </section>
+
+  <section aria-labelledby="signing-keys" class="prose">
+    <h2 id="signing-keys">Release signing keys</h2>
+    <p>
+      Spek releases are signed by several independent builders, and the build is reproducible. The builder keys, their
+      fingerprints and the steps to verify a download are published here with the first release.
+    </p>
+  </section>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

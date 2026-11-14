@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Eligibility · Spek</title>
+    <meta name="description" content="What makes a Spek key eligible to mine: a recorded RandomX ticket per round for the first 45 days, the open launch for the first 36 hours, then one aged stake output.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Eligibility</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    Since every draw counts the same, the cost of fielding a draw is where the security lives. Spek prices it in two
+    phases, and in both the thing that makes a key eligible must be on chain before the beacon it competes against.
+  </p>
+
+  <h2 id="seed-phase">The seed phase: ticket records</h2>
+  <p>
+    At launch nobody holds coins, so a coin requirement would be zero and a draw would cost one key generation. The first
+    45 days (129,600 blocks) therefore use a different price: a RandomX ticket per round. The seed phase has 15 rounds
+    of 8,640 blocks, 3 days each.
+  </p>
+  <p>
+    A ticket is a nonce for which a RandomX hash over the round, the round's seed, the miner's stake program and the
+    nonce falls below a fixed target. The stake program is the 32-byte hidden-key program of the miner's stake address,
+    so a ticket belongs to one key. A ticket counts only once it is <strong>recorded on chain</strong>: a 48-byte record
+    carried in a seed-phase coinbase, at most 16 per block and one per stake program per round. Records travel on their own
+    gossip topic, and every block producer includes pending ones.
+  </p>
+  <p>
+    A record may be for the current or the next round, and it counts only for the heights after its stake cutoff, which
+    is 24 to 36 hours after it lands on chain. A ticket found during a round therefore works, but only for the rest of that
+    round after the cutoff. To cover a whole round, the record must land about two epochs before the round starts, which
+    leaves a 48-hour search window per round. Finding it later costs only the part of the round already gone. Because the ticket is
+    committed before the beacon it competes against exists, nobody can rank free keys by their scores in a known epoch
+    and buy tickets only for the best ones.
+  </p>
+
+  <h3 id="home-machine">What "about 3 tickets per round" means for a home machine</h3>
+  <p>
+    The target was calibrated so that a 2018-era 8-core desktop running the search in its spare cycles finds about three
+    tickets per round. One recorded ticket per round is all a key needs, so an ordinary computer can keep one key
+    eligible, with room for an unlucky round. A round in which nobody is eligible is covered by the
+    <a href="/how-it-works/null-blocks/">null block</a>.
+  </p>
+  <p>
+    Searching uses RandomX's dataset of about 2 GiB; checking a ticket uses light mode, a 256 MiB cache and 15–30 ms. The
+    RandomX instance is a Spek variant with its own parameters, so rented hash power built for other chains cannot be
+    pointed at it.
+  </p>
+  <p>
+    The effect is that seed-phase draws are priced by sustained work per round rather than by a one-time key
+    generation: a bank of keys is worthless without fresh work per key per round.
+  </p>
+
+  <h2 id="open-launch">The open launch: the first 36 hours</h2>
+  <p>
+    Epochs 0–2, the first 36 hours, count only records written into the genesis block, and anyone can win one.
+  </p>
+  <ol>
+    <li>The search opens at a pre-announced Bitcoin block. Its hash, with the network name, gives the launch key, so no ticket can exist before it.</li>
+    <li>Anyone searches for a round-0 ticket under the launch key, at the same target, and submits the record to a public submission channel. The channel checks each ticket on arrival and lists every valid entry with its ticket hash, so anyone can recheck the listing.</li>
+    <li>After the deadline the list is sealed: it is published with the genesis timestamp (6 hours after the deadline), the genesis message and the allocation, a digest over all of them, and the height of a Bitcoin block six blocks past the tip at that moment. Independent witnesses (anyone may witness) record the digest before that block is mined.</li>
+    <li>The genesis block takes up to 1,973 records, one per key, chosen by lowest ticket hash, so when more are submitted than fit, searching longer buys better odds.</li>
+    <li>The launch nonce is derived from the launch key, the seal digest and that Bitcoin block's hash, and the genesis builder is deterministic. The launch beacons depend on a value nobody knew while any input could still change, and anyone can recompute the selection and the genesis block from public inputs.</li>
+  </ol>
+  <p>One record is one key, and a node mines one key, so a launch seat costs what every later round costs: one ticket.</p>
+
+  <h2 id="stake">After the seed phase: one stake output</h2>
+  <p>From block 129,600 a key is eligible at height <var>h</var> when its stake address holds <strong>one</strong> unspent output that</p>
+  <ul>
+    <li>is worth at least the coin requirement, max(80% of the block reward, 0.1 coin): several smaller outputs do not add up;</li>
+    <li>was created below the stake cutoff, one full epoch below the beacon height, so new stake first counts 24–36 hours after it is created;</li>
+    <li>if it is a coinbase output, is mature (3,000 blocks).</li>
+  </ul>
+  <p>
+    The stake address is a hidden-key address built from the miner's key and the commitment to its slot secrets. Nothing
+    is locked: the output is an ordinary coin. Eligibility is judged against the parent block's ledger, so spending the
+    output ends eligibility from the next block. Each funded stake address and horizon is one draw per slot, not each key. A stake address is built from the key
+    and one horizon's commitment, so it belongs to exactly one horizon, and each horizon has its own address and its own
+    output. A key with two funded horizons holds two draws: its miner computes both scores and publishes only the better
+    header, so the network sees one header. Each of those outputs must hold a full requirement of its own, so two draws
+    cost twice the capital, exactly as two keys would. One output counts for one address only, and moving coins between
+    addresses restarts their aging. A block cannot create draws for its miner: it pays one block reward, which funds at
+    most one more output.
+  </p>
+  <p>
+    The requirement halves with the reward. The 0.1-coin floor only binds about nine halvings, roughly 36 years, out.
+  </p>
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 200" role="img" aria-labelledby="coin-requirement-t coin-requirement-d">
+  <title id="coin-requirement-t">Coin requirement by halving era</title>
+  <desc id="coin-requirement-d">
+    A bar for each halving era. The bars halve with every era on a logarithmic scale until the requirement reaches its
+    floor, where the bar stops shrinking and is drawn dashed.
+  </desc>
+  <g>
+      <text class="fig-text fig-muted" x="4" y="23" data-numbers="exempt">era 0</text>
+      <rect class="fig-real" x="52" y="12" width="214" height="14"></rect>
+      <text class="fig-text" x="272" y="23">40</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="41" data-numbers="exempt">era 1</text>
+      <rect class="fig-real" x="52" y="30" width="190.86217868402414" height="14"></rect>
+      <text class="fig-text" x="248.86217868402414" y="41">20</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="59" data-numbers="exempt">era 2</text>
+      <rect class="fig-real" x="52" y="48" width="167.72435736804815" height="14"></rect>
+      <text class="fig-text" x="225.72435736804815" y="59">10</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="77" data-numbers="exempt">era 3</text>
+      <rect class="fig-real" x="52" y="66" width="144.5865360520723" height="14"></rect>
+      <text class="fig-text" x="202.5865360520723" y="77">5</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="95" data-numbers="exempt">era 4</text>
+      <rect class="fig-real" x="52" y="84" width="121.44871473609629" height="14"></rect>
+      <text class="fig-text" x="179.4487147360963" y="95">2.5</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="113" data-numbers="exempt">era 5</text>
+      <rect class="fig-real" x="52" y="102" width="98.31089342012044" height="14"></rect>
+      <text class="fig-text" x="156.31089342012044" y="113">1.25</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="131" data-numbers="exempt">era 6</text>
+      <rect class="fig-real" x="52" y="120" width="75.17307210414445" height="14"></rect>
+      <text class="fig-text" x="133.17307210414447" y="131">0.625</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="149" data-numbers="exempt">era 7</text>
+      <rect class="fig-real" x="52" y="138" width="52.03525078816858" height="14"></rect>
+      <text class="fig-text" x="110.03525078816858" y="149">0.3125</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="167" data-numbers="exempt">era 8</text>
+      <rect class="fig-real" x="52" y="156" width="28.8974294721926" height="14"></rect>
+      <text class="fig-text" x="86.8974294721926" y="167">0.15625</text>
+      
+    </g><g>
+      <text class="fig-text fig-muted" x="4" y="185" data-numbers="exempt">era 9</text>
+      <rect class="fig-null" x="52" y="174" width="14" height="14"></rect>
+      <text class="fig-text" x="72" y="185">0.1</text>
+      <text class="fig-text fig-copper" x="106" y="185">floor</text>
+    </g>
+</svg>
+  
+  <figcaption>The coin requirement by halving era: 80% of the block reward, never below 0.1 coin.</figcaption>
+</figure>
+  <aside class="callout callout-why" role="note">
+  <p class="callout-title">Why 80%</p>
+  
+    <p>
+      The requirement sets the size of one draw, not the cost of an attack. Matching the honest network costs roughly
+      the capital it holds, whatever the price of a single draw. After the seed phase, block production is capital-proportional: a
+      holder of <var>X</var> coins can fund ⌊<var>X</var>/requirement⌋ stake outputs and wins slots in that proportion.
+    </p>
+  
+</aside>
+
+  <h2 id="horizons">Horizons and renewal</h2>
+  <p>
+    A stake output commits to one <strong>horizon</strong>: the slot secrets for 1,024 segments of 3 days, about 8.4
+    years. A node creates its next horizon automatically about a year before the current one ends (122 segments by
+    default, an operator setting), with two segments of overlap so eligibility never lapses.
+  </p>
+  <p>
+    Renewal is an ordinary transaction, and no block win is needed. The node builds the next horizon in 1 to 3 seconds
+    and the next horizon's address needs one output of at least a requirement, which can come from three places: the
+    coinbase of a block the miner wins, surplus at the current address that the node sends itself, or a transfer from a
+    wallet. A miner holding exactly one requirement and never winning needs the wallet transfer. Nothing is locked, so
+    once the new output has aged the old one can be spent, and the capital is doubled only for that aging period and the
+    overlap. The node warns ten segments before a horizon ends if the next one is not funded.
+  </p>
+  <p>
+    The stake key is public in every header and lives on the mining machine, so the node keeps exposure to one stake
+    unit. The coinbase pays the stake address of the first horizon not yet funded, then a separate hidden-key payout
+    address. A winner therefore funds its next horizon for free; a key that never wins renews with one ordinary
+    transaction, which the node makes itself from any surplus at the current stake address, or which the operator funds
+    from a wallet. The node also merges a stake address funded in pieces into a single output.
+  </p>
+
+  <h2 id="transition">After the seed phase</h2>
+  <p>
+    Ticket holders must fund a stake output below the cutoff of the first epoch after the seed phase. The node warns
+    seven days ahead.
+  </p>
+
+  <h2 id="strengths">What taking part costs</h2>
+  <ul class="strengths">
+  <li>no ASIC race;</li>
+  <li>no lock-up or slashing;</li>
+  <li>an ordinary computer is enough (the published minimum is 4 dedicated cores, 8 GB of RAM and an SSD);</li>
+  <li>one funded stake output keeps a key eligible for its whole 8.4-year horizon;</li>
+  <li>each stake unit gets exactly one draw per slot.</li>
+</ul>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/time/" rel="prev">Previous: Time and the clock</a>
+    <a href="/how-it-works/null-blocks/" rel="next">Next: Null blocks</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

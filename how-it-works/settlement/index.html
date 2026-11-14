@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Settlement · Spek</title>
+    <meta name="description" content="How a Spek transaction settles: the 4-block fork window, confirmations sized to an attacker share, restoration pins and the checkpoint barrier. There is no finality gadget.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Settlement</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    Spek has three settlement layers and states each for what it is. There is no finality gadget, and nothing on this
+    page pretends there is.
+  </p>
+
+  <h2 id="fork-window">The 4-block fork window</h2>
+  <p>
+    Each block adds its score to its chain's cumulative score, and the heavier chain wins. When a competing branch forks
+    within 4 blocks of the tip, both branches are compared by cumulative score once each holds at least two blocks above
+    the fork point, and the loser is dropped. Waiting for both sides avoids switching back and forth on every block. The
+    reorg is checked against a copy of the ledger before any live state changes, and rollback on this path is bounded at
+    5 blocks.
+  </p>
+  <p>
+    Forks deeper than the window, such as the two sides of a healed network partition, go to a full download that finds
+    the true branch point, compares cumulative score, and reorgs at any depth above the node's restoration pin.
+  </p>
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 200" role="img" aria-labelledby="fork-window-t fork-window-d">
+  <title id="fork-window-t">A fork inside the fork window</title>
+  <desc id="fork-window-d">
+    A chain of blocks. Blocks left of the restoration pin are never reorganised. Within the fork window at the tip, two
+    competing branches each hold two blocks above the fork point, and the branch with the higher cumulative score wins.
+  </desc>
+  <rect class="fig-box" x="8" y="84" width="34" height="32"></rect>
+  <rect class="fig-box" x="52" y="84" width="34" height="32"></rect>
+  <line class="fig-dash fig-line" x1="96" y1="38" x2="96" y2="170"></line>
+  <text class="fig-text fig-muted" x="96" y="30" text-anchor="middle">restoration pin</text>
+  <rect class="fig-real" x="122" y="84" width="34" height="32"></rect>
+  <text class="fig-text fig-muted" x="139" y="134" text-anchor="middle">fork point</text>
+  <rect class="fig-real" x="196" y="46" width="34" height="32"></rect>
+  <rect class="fig-real" x="240" y="46" width="34" height="32"></rect>
+  <rect class="fig-null" x="196" y="122" width="34" height="32"></rect>
+  <rect class="fig-null" x="240" y="122" width="34" height="32"></rect>
+  <line class="fig-line" x1="158" y1="94" x2="194" y2="66"></line>
+  <line class="fig-line" x1="158" y1="106" x2="194" y2="138"></line>
+  <text class="fig-text fig-strong" x="318" y="66" text-anchor="middle">heavier</text>
+  <text class="fig-text fig-strong" x="318" y="82" text-anchor="middle">wins</text>
+  <text class="fig-text fig-copper" x="318" y="138" text-anchor="middle">dropped</text>
+  <line class="fig-curve fig-thin" x1="122" y1="184" x2="274" y2="184"></line>
+  <text class="fig-text" x="198" y="198" text-anchor="middle">fork window</text>
+</svg>
+  
+  <figcaption>A fork within 4 blocks of the tip is decided by cumulative score once each branch holds two blocks above the fork point. Below the restoration pin, nothing is reorganised.</figcaption>
+</figure>
+
+  <h2 id="confirmations">Confirmations by attacker share</h2>
+  <p>
+    Draws are fixed per height, so an attacker can rewrite history only by out-scoring the honest chain over the same
+    heights. The tables below give the probability that a transaction is ever reversible, and the confirmations needed
+    for under one reversible slot per century, against an attacker holding share <var>q</var> of the draws who may choose
+    its fork point in hindsight. Integrators choose their depth from the share they want to tolerate: for example 136
+    confirmations, about 68 minutes, against an attacker holding a third.
+  </p>
+  <h3 id="confirmations-plain">The same numbers, in plain words</h3>
+  <p>
+    A confirmation is one more block built on top of yours, so it takes 30 seconds. <var>q</var> is the share of all the
+    draws an attacker controls: 0.33 means one draw in three. The attacker is assumed to do the most damaging thing
+    possible, looking back over the whole chain to pick the best moment to start a hidden branch.
+  </p>
+  <p>
+    <strong>How long to wait.</strong> Here "reversal" means the attacker's hidden branch overtakes the honest chain at some
+    moment, even briefly, which is a harsher test than keeping control. The wait in the table is chosen so that, counting
+    every one of the 1,051,200 slots in a year, the expected number of transactions ever reversed is less than one in a
+    hundred years. The odds for any single transaction are far smaller than that, because the hundred years and a million
+    slots a year are spread across all of them.</p>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="Confirmations to wait by attacker share" data-numbers="exempt">
+    <table>
+      <thead><tr><th scope="col">If an attacker could hold</th><th scope="col">Wait this many confirmations</th><th scope="col">About</th></tr></thead>
+      <tbody>
+        <tr><td>1 draw in 10 (10%)</td><td>16</td><td>8 minutes</td></tr>
+        <tr><td>1 in 5 (20%)</td><td>37</td><td>18 minutes</td></tr>
+        <tr><td>1 in 4 (25%)</td><td>58</td><td>29 minutes</td></tr>
+        <tr><td>3 in 10 (30%)</td><td>95</td><td>48 minutes</td></tr>
+        <tr><td>1 in 3 (33%)</td><td>136</td><td>68 minutes</td></tr>
+        <tr><td>2 in 5 (40%)</td><td>412</td><td>3.4 hours</td></tr>
+        <tr><td>9 in 20 (45%)</td><td>1,686</td><td>14 hours</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p data-numbers="exempt">
+    <strong>How the risk falls as you wait.</strong> The odds of a reversal drop very fast with each confirmation. For
+    an attacker holding a third of the draws: after 6 confirmations (3 minutes) about 1 in 4 reversals succeed; after 30
+    (15 minutes) about 1 in 140; after 120 (an hour) about 1 in 16 million. For an attacker holding 10%, 6
+    confirmations already leave about 1 chance in 2,800, and after 30 it is effectively never. Once an attacker holds
+    close to half, no wait is safe for long, which is why the table stops at 45%.
+  </p>
+  <details>
+    <summary>The full tables from the white paper</summary>
+    <p>Numbers with an e in them are in scientific notation: the number after the minus sign says how many places the decimal point moves left, so each step down makes the chance about ten times smaller.</p>
+    <div class="appendix"><p>Probability that a transaction at <em>k</em> confirmations is ever reversible, for an attacker holding share <em>q</em> of the draws who may choose its fork point in hindsight. The figures come from a race model: the best of <em>n</em> independent uniform draws falls short of the maximum score by an exponentially distributed amount, the attacker's branch wins a stretch of heights when its summed scores exceed the honest chain's, and the probabilities are closed forms checked against Monte Carlo simulation.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>q</th>
+<th>k = 6</th>
+<th>10</th>
+<th>30</th>
+<th>60</th>
+<th>120</th>
+<th>240</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.10</td>
+<td>3.6e-4</td>
+<td>4.8e-6</td>
+<td>3.8e-15</td>
+<td>1.3e-28</td>
+<td>2.3e-55</td>
+<td>~0</td>
+</tr>
+<tr>
+<td>0.20</td>
+<td>1.8e-2</td>
+<td>2.4e-3</td>
+<td>2.0e-7</td>
+<td>2.2e-13</td>
+<td>3.7e-25</td>
+<td>1.4e-48</td>
+</tr>
+<tr>
+<td>0.33</td>
+<td>2.4e-1</td>
+<td>1.3e-1</td>
+<td>7.3e-3</td>
+<td>1.4e-4</td>
+<td>6.4e-8</td>
+<td>1.8e-14</td>
+</tr>
+<tr>
+<td>0.40</td>
+<td>5.5e-1</td>
+<td>4.3e-1</td>
+<td>1.5e-1</td>
+<td>3.5e-2</td>
+<td>2.3e-3</td>
+<td>1.3e-5</td>
+</tr>
+</tbody>
+</table></div>
+<p>Confirmations for under one reversible slot per century (1,051,200 slots a year):</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Table"><table>
+<thead>
+<tr>
+<th>q</th>
+<th>10%</th>
+<th>20%</th>
+<th>25%</th>
+<th>30%</th>
+<th>33%</th>
+<th>40%</th>
+<th>45%</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>k</td>
+<td>16 (8 min)</td>
+<td>37 (18 min)</td>
+<td>58 (29 min)</td>
+<td>95 (48 min)</td>
+<td>136 (68 min)</td>
+<td>412 (3.4 h)</td>
+<td>1,686 (14 h)</td>
+</tr>
+</tbody>
+</table></div>
+</div>
+  </details>
+
+  <h2 id="restoration-pin">Restoration pins</h2>
+  <p>
+    A running node never reorganises below its <strong>restoration pin</strong>: the newest checkpoint boundary buried
+    at least one full interval below its tip. Checkpoint boundaries sit every 4,000 blocks (about 33 hours), so the pin
+    trails the tip by 33–67 hours.
+  </p>
+
+  <h2 id="checkpoints">The checkpoint barrier</h2>
+  <p>
+    A node with no history of its own, such as a new node or one that was offline for days, trusts the checkpoints
+    compiled into its release and pin files signed by a threshold of checkpoint signers. A fork whose branch point lies
+    behind the node's restoration pin or a hard checkpoint is never resolved automatically, and the peer offering it is
+    banned.
+  </p>
+  <aside class="callout callout-why" role="note">
+  <p class="callout-title">Why checkpoints are permanent</p>
+  
+    <p>
+      Unbonded stake cannot bound signing after the fact: a key that held stake at a fork point can sign a branch from
+      that point at any later time, even after its owner sold the coins. Hard checkpoints are therefore permanent weak
+      subjectivity, not a launch measure, and are never retired. A node checks a pin file itself: it must name the
+      network and genesis, carry signatures from a threshold of the checkpoint signers compiled into the binary, and may
+      add to the compiled-in table but never contradict it.
+    </p>
+  
+</aside>
+
+  <h2 id="no-gadget">No finality gadget</h2>
+  <p>
+    There is no finality gadget and no rollback limit shorter than the pin; the reasons are on
+    <a href="/how-it-works/design-choices/#settlement">Design choices</a>. Coinbase outputs mature after 3,000 blocks,
+    about 25 hours.
+  </p>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/cryptography/" rel="prev">Previous: Cryptography</a>
+    <a href="/how-it-works/design-choices/" rel="next">Next: Design choices</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

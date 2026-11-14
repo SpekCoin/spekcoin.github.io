@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>How it works · Spek</title>
+    <meta name="description" content="Spek's mechanism in plain language, one concept per page, above the white paper.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <h1>How it works</h1>
+  <p class="page-intro">
+    The plain-language layer above the <a href="/whitepaper/">white paper</a>: one concept per page, each with the
+    numbers the protocol actually uses.
+  </p>
+  <ol class="concepts">
+    <li>
+        <a href="/how-it-works/slot-election/">Slot election</a>
+        <p>One draw per stake output per slot, secret until its header is published.</p>
+      </li><li>
+        <a href="/how-it-works/time/">Time and the clock</a>
+        <p>Why the header has no timestamp, and where a node gets its time.</p>
+      </li><li>
+        <a href="/how-it-works/eligibility/">Eligibility</a>
+        <p>Ticket records in the first 45 days, then one aged stake output.</p>
+      </li><li>
+        <a href="/how-it-works/null-blocks/">Null blocks</a>
+        <p>What a quiet slot is, and why it is not a failure.</p>
+      </li><li>
+        <a href="/how-it-works/cryptography/">Cryptography</a>
+        <p>SQIsign, its standardisation status, hidden keys and the migration path.</p>
+      </li><li>
+        <a href="/how-it-works/settlement/">Settlement</a>
+        <p>Confirmations by attacker share, restoration pins and checkpoints.</p>
+      </li><li>
+        <a href="/how-it-works/design-choices/">Design choices</a>
+        <p>Why Spek is built this way: the alternatives weighed and what was left out.</p>
+      </li><li>
+        <a href="/how-it-works/glossary/">Glossary</a>
+        <p>The terms used on these pages, defined once.</p>
+      </li><li>
+        <a href="/how-it-works/limitations/">Limitations</a>
+        <p>The open problems, verbatim from the white paper.</p>
+      </li>
+  </ol>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

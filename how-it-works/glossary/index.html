@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Glossary · Spek</title>
+    <meta name="description" content="The terms used on Spek's How it works pages, each defined once in plain words.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Glossary</h1>
+  <div class="prose">
+    
+  <p class="page-intro">The terms these pages use, in alphabetical order.</p>
+  <dl class="glossary">
+    <dt id="beacon">Beacon</dt>
+    <dd>A random value for one epoch, read from the chain's election seed a full epoch before that epoch starts. Every draw in the epoch is scored against it. No one can predict it until its source epoch has been produced. See <a href="/how-it-works/slot-election/#beacon">The beacon</a>.</dd>
+
+    <dt id="commitment">Commitment</dt>
+    <dd>The Merkle root of a miner's slot secrets, stored in its stake output before any beacon it will be drawn against exists. It fixes which slot secret is valid for each height.</dd>
+
+    <dt id="draw">Draw</dt>
+    <dd>The one score a stake output gets in a slot: a hash of the beacon, the height, the miner's key and its slot secret.</dd>
+
+    <dt id="election-seed">Election seed</dt>
+    <dd>A running value in which every block mixes in its winner's slot secret. Beacons are read from it.</dd>
+
+    <dt id="epoch">Epoch</dt>
+    <dd>1,440 slots, 12 hours. Each epoch has one beacon.</dd>
+
+    <dt id="equivocation">Equivocation</dt>
+    <dd>Signing two different headers for the same slot with one key. The key's entry for that slot is evicted and a compact proof is passed on.</dd>
+
+    <dt id="miner">Miner</dt>
+    <dd>A block producer. Mining here means submitting one candidate block per slot, not racing to find a hash.</dd>
+
+    <dt id="null-block">Null block</dt>
+    <dd>The block every node builds identically when no candidate for a slot validates. See <a href="/how-it-works/null-blocks/">Null blocks</a>.</dd>
+
+    <dt id="roughtime">Roughtime</dt>
+    <dd>A protocol in which servers return authenticated time. A node keeps its verified clock from a quorum of independent operators. See <a href="/how-it-works/time/">Time and the clock</a>.</dd>
+
+    <dt id="score">Score</dt>
+    <dd>How far a draw's hash sits from the centre of the 256-bit hash space. The highest score whose full block validates wins the slot.</dd>
+
+    <dt id="round-seed">Round seed</dt>
+    <dd>In the seed phase, the block hash that keys one round of the RandomX ticket search.</dd>
+
+    <dt id="seed-phase">Seed phase</dt>
+    <dd>The first 45 days, when eligibility comes from RandomX ticket records instead of coins. The name is only a label for this launch period. It is not the election seed, the slot seed or the round seed.</dd>
+
+    <dt id="settled">Settled and unsettled</dt>
+    <dd>A slot is unsettled while it is being mined and settled once it closes, 30 seconds later.</dd>
+
+    <dt id="slot">Slot</dt>
+    <dd>A 30-second timeslot. Its number is the block height, so a block's time follows from its height.</dd>
+
+    <dt id="slot-seed">Slot seed</dt>
+    <dd>A random 32-byte secret in the miner's key file, drawn from the operating system and independent of the signing key. Every slot secret is derived from it, and it is never published.</dd>
+
+    <dt id="slot-secret">Slot secret</dt>
+    <dd>A value only the key owner can compute, unique for each height, that a header reveals. It is checked against the commitment in the stake output.</dd>
+
+    <dt id="stake-output">Stake output</dt>
+    <dd>A funded output that makes a key eligible, and holds its commitment. See <a href="/how-it-works/eligibility/">Eligibility</a>.</dd>
+
+    <dt id="ticket-record">Ticket record</dt>
+    <dd>In the first 45 days, a record written to the chain that proves a key's seed-phase work and makes it eligible.</dd>
+  </dl>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/design-choices/" rel="prev">Previous: Design choices</a>
+    <a href="/how-it-works/limitations/" rel="next">Next: Limitations</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

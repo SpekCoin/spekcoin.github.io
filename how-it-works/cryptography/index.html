@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Cryptography · Spek</title>
+    <meta name="description" content="Spek's cryptography: SQIsign Level I and Level V and their standardisation status, keys hidden behind hashes, ScriptCommit, addresses, BLAKE3 slot secrets and the migration path.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Cryptography</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    Every signature in Spek is SQIsign, an isogeny-based post-quantum scheme, and every hash is BLAKE3. Two facts
+    qualify everything on this page.
+  </p>
+  <aside class="callout callout-caveat" role="note">
+  <p class="callout-title">SQIsign is not a NIST standard</p>
+  
+  <p>
+    SQIsign is a Round 3 candidate in NIST's additional-signature process (advanced in May 2026, with
+    about two years of evaluation ahead). "NIST security level 1" names a security category, not an approval.
+  </p>
+
+</aside>
+<aside class="callout callout-caveat" role="note">
+  <p class="callout-title">Audited only by AI models</p>
+  
+  <p>
+    The founders used Claude AI models to build and audit Spek, and the code has been audited only by AI models
+    (Claude). No independent human audit, cryptographer review, or SQIsign-author review took place before launch.
+    Anthropic, the maker of Claude, is not a partner in this project and does not endorse it.
+  </p>
+
+</aside>
+
+  <h2 id="why-sqisign">Why SQIsign, and what if it fails</h2>
+  <p>
+    NIST advanced nine candidates to Round 3 of its additional digital-signature process in May 2026; one of them,
+    HAWK, has since been withdrawn by its submission team, leaving eight, and SQIsign is among them. That round is expected to last about two years, a draft standard could not appear before about 2028, and SQIsign may
+    be dropped. "Level I" and "Level V" name the security categories its parameters target, comparable to AES-128 and
+    AES-256 key search, not any NIST approval.
+  </p>
+  <p>
+    Spek chose SQIsign over the standardised ML-DSA for its size: a 200-byte signature and an 83-byte key, against
+    roughly 2.4 KB and 1.3 KB. The trade-off is that SQIsign's security rests on a younger assumption, the
+    supersingular endomorphism-ring problem, with less cryptanalytic history than lattices, and on a reference
+    implementation that was not built for production.
+  </p>
+  <p>
+    If later cryptanalysis weakens SQIsign, or NIST drops it, the only remedy is a migration to another signature scheme
+    through a hard fork, and every operator chooses for themselves whether to adopt it. Mining keys rotate with every
+    horizon, so moving block headers to a new scheme phases in as horizons expire, with no coin moves.
+  </p>
+
+  <h2 id="levels">Level I and Level V</h2>
+  <div class="table-scroll" tabindex="0" role="region" aria-label="SQIsign parameter sets">
+    <table>
+      <thead>
+        <tr><th scope="col">Level</th><th scope="col">Public key</th><th scope="col">Signature</th><th scope="col">Secret key</th><th scope="col">Verify (ADX / portable)</th><th scope="col">Used for</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">I</th><td>83 B</td><td>200 B</td><td>270 B</td><td>2.68 / 5.03 ms</td><td>Headers, mining keys, stake outputs, everyday outputs (the default)</td></tr>
+        <tr><th scope="row">V</th><td>169 B</td><td>406 B</td><td>549 B</td><td>16.4 / 26.7 ms</td><td>Opt-in custody outputs; every genesis allocation, council and guardian key</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    Signing a Level I header takes 25–40 ms, once per slot for a miner. There is no ECDSA, no Schnorr and no
+    elliptic-curve library linked into the signature code, and a test on the dependency graph keeps it that way.
+  </p>
+  <aside class="callout callout-why" role="note">
+  <p class="callout-title">Why headers stay at Level I</p>
+  
+    <p>
+      Someone who broke Level I still could not win a live slot as someone else: they would also need that key's
+      unrevealed slot secret, which comes from an independent slot seed and is protected only by BLAKE3. They could
+      copy a just-revealed slot secret into a second header and force the slot to be forfeited, a liveness attack rather
+      than a theft, and they could sign branches for past heights down to the restoration pin, which would hold at any
+      level that broke.
+    </p>
+  
+</aside>
+
+  <h2 id="hidden-keys">Keys hidden until spent</h2>
+  <p>
+    The default output hides even the public key. A hashed output is 34 bytes: a witness version and a 32-byte program,
+    which is a tagged BLAKE3 hash of the key and its script commitment. The key appears on chain only when the output is
+    spent. Wallets use this form for every receive, change and coinbase address. The one exception is a stake key, which
+    every header it signs makes public; the payout rule keeps one stake unit at that address.
+  </p>
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 200" role="img" aria-labelledby="hashed-output-t hashed-output-d">
+  <title id="hashed-output-t">A hashed output and its two spend paths</title>
+  <desc id="hashed-output-d">
+    On the left, an output that holds only a witness version and a 32-byte program. On the right, the two ways to spend
+    it: a key-path spend reveals the key and commitment beside one signature, and a script-path spend reveals one leaf
+    and its proof.
+  </desc>
+  <defs>
+    <marker id="hashed-output-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path class="fig-arrowhead" d="M0,0 L8,4 L0,8 z"></path>
+    </marker>
+  </defs>
+  <rect class="fig-real" x="8" y="62" width="104" height="76"></rect>
+  <text class="fig-text fig-strong" x="60" y="84" text-anchor="middle">output</text>
+  <text class="fig-text" x="60" y="104" text-anchor="middle">version</text>
+  <text class="fig-text" x="60" y="122" text-anchor="middle">program</text>
+  <text class="fig-text fig-muted" x="60" y="156" text-anchor="middle">no key shown</text>
+  <line class="fig-line" x1="114" y1="88" x2="156" y2="48" marker-end="url(#hashed-output-arrow)"></line>
+  <line class="fig-line" x1="114" y1="112" x2="156" y2="152" marker-end="url(#hashed-output-arrow)"></line>
+  <rect class="fig-box" x="158" y="14" width="194" height="68"></rect>
+  <text class="fig-text fig-copper" x="255" y="34" text-anchor="middle">key-path spend</text>
+  <text class="fig-text" x="255" y="54" text-anchor="middle">key + commitment</text>
+  <text class="fig-text" x="255" y="72" text-anchor="middle">one signature</text>
+  <rect class="fig-box" x="158" y="118" width="194" height="68"></rect>
+  <text class="fig-text fig-copper" x="255" y="138" text-anchor="middle">script-path spend</text>
+  <text class="fig-text" x="255" y="158" text-anchor="middle">one leaf + proof</text>
+  <text class="fig-text" x="255" y="176" text-anchor="middle">control block</text>
+</svg>
+  
+  <figcaption>A hashed output holds only a 32-byte program. A key-path spend reveals the key and commitment next to one signature; a script-path spend reveals one leaf and its proof.</figcaption>
+</figure>
+
+  <h2 id="scriptcommit">ScriptCommit instead of Taproot tweaks</h2>
+  <p>
+    Taproot hides a script tree by tweaking an elliptic-curve key. Isogeny keys cannot be tweaked that way, so Spek's
+    analogue, <strong>ScriptCommit</strong>, commits to the script tree with a hash instead. A key-path spend reveals the
+    key and commitment next to one signature; a script-path spend reveals the leaf, its Merkle proof and a control block,
+    and the node recomputes the commitment and the program before running the leaf. Multisig, timelocks, hash locks and
+    atomic swaps are expressible; key aggregation is not. An output that wants its key visible can use the plain
+    ScriptCommit form, 118 bytes.
+  </p>
+
+  <h2 id="addresses">Addresses</h2>
+  <p>
+    Addresses are Bech32m with the prefix <code>spek</code>. Witness version 1 carries a 32-byte hashed program (Level I)
+    or the 115-byte plain program, and version 2 a 32-byte Level V program. Decoding re-encodes and requires a byte-exact
+    match, so each output script has exactly one lowercase address string. There is no pay-to-pubkey form.
+  </p>
+
+  <h2 id="slot-secrets">Slot secrets from BLAKE3 alone</h2>
+  <p>
+    The election needs a per-slot value that is secret until used, unique per height and committed before the beacon
+    exists. No deployable post-quantum VRF exists, so Spek builds it from BLAKE3 hash chains (see
+    <a href="/how-it-works/slot-election/#slot-secrets">Slot election</a>). The slot seed is independent of the signing
+    key, so recovering a SQIsign secret key reveals nothing about future slot secrets. Every consensus hash is
+    domain-separated by a tag string.
+  </p>
+  <aside class="callout callout-caveat" role="note">
+  <p class="callout-title">Worth a cryptographer&#39;s time</p>
+  
+    <p>
+      The election is only fair if each key has exactly one valid slot secret for each height. If a miner could find two
+      valid secrets for the same height, it could try both and keep the better score, which is the cheating the design
+      exists to prevent. This one-valid-secret property is what Spek's hash chains are built to guarantee, and it is
+      the part most worth an outside expert checking. It matters because X-VRF, another hash-based scheme designed for
+      electing block producers, was published and then broken, and the break was on exactly this property. Spek's
+      construction is different, but that is the history, and no human cryptographer has yet reviewed it.
+    </p>
+  
+</aside>
+
+  <h2 id="migration">The migration path</h2>
+  <p>
+    If SQIsign is ever weakened, Spek has to be able to switch to a different signature scheme. This is how the switch
+    is built to work.
+  </p>
+  <ul>
+    <li>Every output carries a version number that names the scheme that must verify it: 1 is Level I, 2 is Level V, and 3 to 16 are held back for future schemes.</li>
+    <li>Every block header also carries a version, and the version decides which scheme signs the header. A new header scheme starts at a block height set in advance in an upgrade schedule.</li>
+    <li>At any height, only one scheme is valid for a given version. There is no list of algorithms to choose from, so an attacker cannot talk a node into accepting a weaker one (a downgrade attack).</li>
+    <li>A signature covers the locking script of every output it spends, so a signature made for one scheme cannot be reused as if it belonged to another.</li>
+  </ul>
+  <p>
+    Adding a new scheme is a hard fork: every operator chooses whether to adopt it. Block headers move over without
+    anyone moving coins, because mining keys are replaced with each new horizon.
+  </p>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/null-blocks/" rel="prev">Previous: Null blocks</a>
+    <a href="/how-it-works/settlement/" rel="next">Next: Settlement</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

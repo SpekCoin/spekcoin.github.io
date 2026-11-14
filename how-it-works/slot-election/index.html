@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Slot election · Spek</title>
+    <meta name="description" content="How Spek elects one block every 30 seconds: one secret draw per stake output, scored against an epoch beacon nobody can predict or grind.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Slot election</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    Every 30 seconds the network elects one block. Each eligible stake output gets exactly one draw, and no one, the
+    owner included, can rank keys for a future slot before its beacon is fixed. The <strong>beacon</strong> is a
+    random value, fixed a full epoch ahead, that every draw is scored against. No one else can know a miner's score
+    until its header is published. Terms are collected in the <a href="/how-it-works/glossary/">glossary</a>.
+  </p>
+  <p>
+    Spek calls a block producer a <strong>miner</strong>, the word the protocol and its software use. Mining here means
+    submitting one candidate block per slot, not racing to find a hash.
+  </p>
+
+  <h2 id="draw">One draw</h2>
+  <p>A miner's score for the slot at height <var>h</var> is</p>
+  <pre class="formula"><code>score = middle_out( BLAKE3("spek/score/v2" ‖ B_e ‖ h ‖ pk ‖ r_h) )</code></pre>
+  <ul>
+    <li><code>B_e</code> is the beacon for the epoch the slot belongs to (an epoch is 1,440 slots, 12 hours);</li>
+    <li><code>h</code> is the height, which is also the slot number;</li>
+    <li><code>pk</code> is the miner's public key;</li>
+    <li>
+      <code>r_h</code> is the miner's <strong>slot secret</strong> for that height: a value only the key owner can
+      compute, unique per height, committed inside the stake output before the beacon existed.
+    </li>
+  </ul>
+  <p>
+    <code>middle_out</code> measures how far the hash, read as a 256-bit number, sits from the centre of the hash space.
+    Both <code>0x00…00</code> and <code>0xFF…FF</code> score the maximum, 2<sup>255</sup>; the two values either side
+    of the centre score 1. The highest score whose full block validates wins the slot.
+  </p>
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 190" role="img" aria-labelledby="score-t score-d">
+  <title id="score-t">Score against hash value</title>
+  <desc id="score-d">
+    A V-shaped line over the hash space from 0x00…00 to 0xFF…FF. The score is highest at both ends, falls to its
+    minimum, 1, at the centre, and rises again. One sample hash is marked on the right arm.
+  </desc>
+  <line class="fig-line" x1="20" y1="150" x2="340" y2="150"></line>
+  <line class="fig-line fig-dash" x1="180" y1="22" x2="180" y2="150"></line>
+  <polyline class="fig-curve" points="20,34 180,140 340,34"></polyline>
+  <line class="fig-line fig-dash" x1="262" y1="150" x2="262" y2="84"></line>
+  <circle class="fig-dot" cx="262" cy="84" r="5"></circle>
+  <text class="fig-text fig-muted" x="26" y="20">score: highest at both ends</text>
+  <text class="fig-text fig-muted" x="180" y="176" text-anchor="middle">centre: lowest, 1</text>
+  <text class="fig-text" x="20" y="168">0x00…00</text>
+  <text class="fig-text" x="340" y="168" text-anchor="end">0xFF…FF</text>
+  <text class="fig-text fig-strong" x="270" y="108">one hash</text>
+</svg>
+  
+  <figcaption>A score is the distance of one hash from the centre of the 256-bit hash space. Both ends score highest; the centre scores lowest.</figcaption>
+</figure>
+  <p>
+    Every input is fixed before the beacon it is drawn against exists, and the key sits inside the hash, so there is
+    nothing to grind: no nonce, no key to swap in afterwards, and nothing a winner can re-sign or re-order to improve its
+    own or any later draw.
+  </p>
+  <p>
+    Copying does not help either. The key is part of what is hashed, so if someone copies another miner's commitment, or
+    reuses a slot secret the other miner already published, the hash they get is different from the original owner's,
+    because it contains their own key. They have a draw of their own, not the owner's score. A copied commitment also
+    cannot be used to build a valid header, because the stake address it opens is the owner's, and only the owner holds
+    the seed that produces its slot secrets.
+  </p>
+
+  <h2 id="slot-secrets">Slot secrets</h2>
+  <p>
+    Each miner key file holds a SQIsign Level I key pair and a 32-byte slot seed, the secret every slot secret is derived from, drawn from the operating system's
+    random source, independent of the signing key. From the slot seed the node builds one hash chain per 3-day segment and
+    reveals it backwards, one value per slot, so publishing a slot's secret exposes only values for heights already
+    passed. The tops of 1,024 consecutive segment chains, about 8.4 years, form a Merkle tree whose root is committed in
+    the stake output. That commitment is made before any beacon it will be drawn against exists, so for every key,
+    commitment and height exactly one slot secret verifies.
+  </p>
+  <p>
+    A header carries the slot secret and its Merkle path. A verifier walks the secret up to its segment top, climbs the
+    path, and uses the root it derives to rebuild the stake address. If the secret is wrong, there is simply no stake at
+    that address.
+  </p>
+
+  <h2 id="beacon">The beacon</h2>
+  <p>
+    The beacon for epoch <var>e</var> is read from the chain's election seed at the last block of epoch
+    <var>e</var>−2, a full epoch before epoch <var>e</var> starts. Every block mixes its winner's slot secret into the
+    election seed, so the beacon cannot be predicted until that whole source epoch has been produced. It is the same on
+    every fork that shares that history, which covers every propagation fork.
+  </p>
+  <p>
+    Stake counts only if it was created below a cutoff one full epoch before the beacon height. Anyone who learns a
+    beacon is already too late to create a key, fund it and have it count for that beacon's epoch: new stake first
+    counts 24–36 hours after it is created.
+  </p>
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 200" role="img" aria-labelledby="epochs-t epochs-d">
+  <title id="epochs-t">Where the beacon of epoch e comes from</title>
+  <desc id="epochs-d">
+    Four consecutive epochs, e−3 to e, each L slots long. The stake cutoff is the end of epoch e−3. The beacon height is
+    the end of epoch e−2: the election seed there gives the beacon for epoch e. During epoch e−1 the beacon is public
+    and no new stake can count for it. Epoch e is drawn against it.
+  </desc>
+  <text class="fig-text fig-muted" x="340" y="20" text-anchor="end">each epoch is L slots</text>
+  <rect class="fig-box" x="20" y="62" width="80" height="40"></rect>
+  <rect class="fig-box" x="100" y="62" width="80" height="40"></rect>
+  <rect class="fig-box" x="180" y="62" width="80" height="40"></rect>
+  <rect class="fig-real" x="260" y="62" width="80" height="40"></rect>
+  <text class="fig-text" x="60" y="87" text-anchor="middle">epoch e−3</text>
+  <text class="fig-text" x="140" y="87" text-anchor="middle">epoch e−2</text>
+  <text class="fig-text" x="220" y="87" text-anchor="middle">epoch e−1</text>
+  <text class="fig-text fig-strong" x="300" y="87" text-anchor="middle">epoch e</text>
+  <line class="fig-line fig-dash" x1="100" y1="46" x2="100" y2="62"></line>
+  <line class="fig-line fig-dash" x1="180" y1="102" x2="180" y2="118"></line>
+  <line class="fig-line fig-dash" x1="260" y1="46" x2="260" y2="62"></line>
+  <circle class="fig-dot" cx="100" cy="62" r="4"></circle>
+  <circle class="fig-dot" cx="180" cy="62" r="4"></circle>
+  <circle class="fig-dot" cx="260" cy="62" r="4"></circle>
+  <text class="fig-text" x="100" y="40" text-anchor="middle">stake cutoff</text>
+  <text class="fig-text" x="180" y="134" text-anchor="middle">beacon height</text>
+  <text class="fig-text" x="260" y="40" text-anchor="middle">B_e used</text>
+  <text class="fig-text fig-muted" x="20" y="164">cutoff: only outputs created below it count</text>
+  <text class="fig-text fig-muted" x="20" y="182">beacon height: the seed there gives B_e</text>
+</svg>
+  
+  <figcaption>The beacon for epoch e is read from the election seed at the last slot of epoch e−2, a full epoch before e starts. The stake set froze one epoch before that.</figcaption>
+</figure>
+  <aside class="callout callout-caveat" role="note">
+  <p class="callout-title">What was measured and accepted</p>
+  
+    <p>
+      The miner at a beacon height can withhold its block and let the runner-up set the beacon instead, and because it
+      holds its own future slot secrets it can evaluate both choices. Simulation puts the gain at 1.9–3.0% more of its
+      own wins per beacon it controls, 0.3–0.6% averaged over all epochs, with no compounding.
+    </p>
+  
+</aside>
+
+  <h2 id="share">Why share equals draws</h2>
+  <p>
+    Each draw is an independent random number, and the winner is the highest. Take one party holding <var>N</var> draws
+    and everyone else holding <var>H</var> in total. Before the scores are known, every one of the <var>N</var>+<var>H</var>
+    draws is equally likely to be the highest, since none is favoured. So the chance that the highest is one of the
+    party's <var>N</var> is <var>N</var> out of <var>N</var>+<var>H</var>, which is the party's share of the draws and
+    nothing more: not more because it is rich, not less because it is small. No election rule can change that, so what a draw
+    costs to field is where the security lives. Spek prices it explicitly: see <a href="/how-it-works/eligibility/">Eligibility</a>.
+    Because no winner schedule exists to read in advance, there is no predicted winner to attack or bribe.
+  </p>
+
+  <h2 id="slot">Inside one slot</h2>
+  <p>
+    For the first 6 seconds only headers travel: 743-byte candidate headers flood the network and the ranking settles.
+    From 6 to 30 seconds nodes pull full bodies only for the top three candidates and serve the top five. At the slot
+    boundary each node commits the highest-ranked candidate whose full body is in hand and passes validation. If none
+    does, every node builds the same <a href="/how-it-works/null-blocks/">null block</a>.
+  </p>
+  <p>
+    A miner key gets one entry per slot. A second header from the same key with different signed content is
+    equivocation: the key's entry is evicted for that slot, and a compact proof is passed on so every node does the
+    same.
+  </p>
+
+  <h2 id="try-it">Try it</h2>
+  <p>
+    This is an interactive demo of the election. Add miners, each with a stake output and its own slot seed (the secret that its slot secrets come from, described under Slot secrets above), then advance slots: each score appears only when its
+    header is published, and the highest score wins. A second view advances epochs and shows where each beacon comes
+    from, and lets one miner try to grind.
+  </p>
+  <section class="sandbox" data-election-sandbox data-epoch-slots="8" aria-label="Election demo">
+  <p class="sandbox-fallback" data-sandbox-fallback>
+    The interactive demo needs JavaScript, and nothing else on this site does. Without it the figures on this page show the same
+    rules: how a hash becomes a score, how a slot runs, and where an epoch's beacon comes from.
+  </p>
+  <script src="/election-core.js" defer></script>
+  <script src="/election-sandbox.js" defer></script>
+</section>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <span></span>
+    <a href="/how-it-works/time/" rel="next">Next: Time and the clock</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

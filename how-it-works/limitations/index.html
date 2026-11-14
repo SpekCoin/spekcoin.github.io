@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Limitations · Spek</title>
+    <meta name="description" content="Spek's known limitations and open items, verbatim from section 17 of the white paper.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Limitations</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    This page is section 17 of the <a href="/whitepaper/v1.0/#17-known-limitations-and-open-items">white paper</a>, verbatim.
+  </p>
+  <div class="doc-stamp" data-numbers="exempt" data-document="whitepaper" data-pinned="true">
+  <p>
+    <strong>Version 1.0</strong> · 
+    Rendered from <a href="https://github.com/SpekCoin/Spek/blob/dbce8dcfe2754a8be4babfedd171437b2b2caace/WHITEPAPER.md"><code>WHITEPAPER.md</code></a> in the node repository
+  </p>
+  <p class="doc-stamp-hash">Source SHA-256 <code>b9090f9329a2f860403f815c78ca90725e80cb06a4e067780494716991a8040a</code></p>
+</div>
+
+  <div class="verbatim"><p>As of this version:</p>
+<ul>
+<li><strong>SQIsign is not a NIST standard.</strong> It is a Round 3 candidate in NIST's additional-signature process (§8.1). If later cryptanalysis weakens it, or NIST drops it, Spek's only remedy is a signature-scheme migration through a hard fork (§8.5, §14). Every operator chooses for themselves whether to adopt that fork.</li>
+<li><strong>No independent audit.</strong> The code, including the vendored SQIsign and RandomX C and the FFI boundary, has been audited only by AI models (Claude). No human security firm, cryptographer, or SQIsign author has reviewed it. Mainnet is its first exposure to outside attackers. The uniqueness of the slot reveal (§4.1) is the property most worth a cryptographer's time: a related hash-based construction for proof-of-stake election, X-VRF, was later broken on exactly that property.</li>
+<li><strong>Signing after the fact.</strong> Unbonded stake cannot stop a key that held stake at a fork point from signing a branch from that point later, including keys whose owners have since sold. Only restoration pins (running nodes) and compiled checkpoints (fresh nodes) bound it. On its own private branch an attacker also knows each beacon before that beacon's stake cutoff; simulation puts the break-even share at 0.45–0.47 for a branch inside the pin, and at about 0.42 (with a million candidate fits) for a fresh node that has no checkpoint past the fork.</li>
+<li><strong>Pins advance without network evidence.</strong> A restoration pin moves with the node's own tip, so a node partitioned, or mining alone, for longer than the pin lag (33–67 h) pins its own branch and refuses the other side on reconnect.</li>
+<li><strong>No fast finality.</strong> Settlement is by confirmations (Appendix B) until the pin; there is no finality gadget.</li>
+<li><strong>Download-time checks during the seed phase.</strong> Seed-phase eligibility needs the block bodies that hold the ticket records, so the header stage of a download checks signatures and horizons but no RandomX work. A fake seed-phase header chain is therefore as cheap to build as a fake post-seed one; the eligibility check before any rollback (§12.1), pins, block validation and the download's per-candidate budgets bound both.</li>
+<li><strong>Stake keys are hot and public.</strong> Every header shows its stake key, and the key lives on the mining machine. The payout rule keeps one stake unit per horizon at that address (two for the year before a renewal), and everything else goes to a hidden-key payout address. A node with no payout address configured keeps paying its stake address and warns daily.</li>
+<li><strong>Roughtime operator count.</strong> The built-in pool has four independent operators against a quorum of three: any one operator may be offline or rotating keys and syncs still complete, but with one offline every remaining operator must answer, and two colluding operators can steer the vote median (by at most the 5-second step bound per applied sync). The remedy is more independently operated servers, never a lower quorum.</li>
+<li><strong>Network-wide multi-slot outage</strong> stops the chain until an operator fills null blocks (§5). Single-node outages heal by themselves.</li>
+<li><strong>Withholding the top five.</strong> A node ranks at most five peer headers per slot plus its own (§5). If the five best headers of a slot are all withheld, every node that holds them settles the same canonical null: no body in the top five is committable, and a node's own block ranked sixth is skipped because no peer retains it, so committing it would leave each miner on a different block. Safety holds (one block per height; a node the withheld headers did not reach commits a real block, and any real block outranks the null), the slot's liveness is lost, and the withholder forfeits the slot's rewards. With an attacker share <em>p</em> of the draws for a slot, about <em>p</em>⁵ of slots are nulled; nulling a fraction <em>f</em> takes <em>p</em> = <em>f</em>^(1/5), that is <em>p</em>/(1−<em>p</em>) times the honest draw count: about 0.66× for 1% of slots, 1.7× for 10%, 6.7× for 50%. These are model estimates (independent uniform scores, every withheld header reaching every node), not simulation results. Each draw costs a recorded seed ticket per round in the seed phase and an aged stake output after it (§7).</li>
+<li><strong>Multiple draws per operator.</strong> One key per node is policy, not consensus. An operator holding <em>K</em> funded stake addresses (on one key or several) fields <em>K</em> draws for a one-time, refundable <em>K</em> × requirement. Whether the network's security then rests on capital held rather than on running costs turns on this, and it still needs a full economic analysis.</li>
+<li><strong>Not included:</strong> SPV proofs for light clients, native IPv6, data-availability sampling, on-chain soft-fork signalling, verification of a UTXO snapshot after sync, and NTS (authenticated NTP).</li>
+<li><strong>Hard checkpoints</strong> are a permanent trust assumption for nodes with no history of their own (weak subjectivity): such a node trusts the release's compiled-in pins and the checkpoint signer set. They have no sunset; the signer set, its threshold and the signing procedure are part of the launch disclosure.</li>
+</ul>
+</div>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/glossary/" rel="prev">Previous: Glossary</a>
+    <a href="/whitepaper/">Read the white paper</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>

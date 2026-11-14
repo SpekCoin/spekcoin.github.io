@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Time and the clock · Spek</title>
+    <meta name="description" content="Why a Spek block header has no timestamp, and how a node keeps verified time from an authenticated Roughtime quorum and its own hardware clock.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.BCbYqhkA.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Time and the clock</h1>
+  <div class="prose">
+    
+  <p class="page-intro">
+    In Spek, time is the schedule. Height equals slot number, so a block's time is never declared: it follows from its
+    height. That makes the clock a consensus input, and Spek does not take it from the operating system.
+  </p>
+
+  <h2 id="no-timestamp">Why the header has no timestamp</h2>
+  <p>With genesis timestamp <var>G</var>, the slot being mined right now, and the block at height <var>h</var>: </p>
+  <pre class="formula"><code>time_derived_timeslot = (now − G) / 30
+settled_tip           = time_derived_timeslot − 1
+derived_timestamp(h)  = G + 30·h</code></pre>
+  <p>
+    A slot is <em>unsettled</em> while it is being mined and <em>settled</em> once it closes. A block at height
+    <var>h</var> can only ever have timestamp <var>G</var> + 30<var>h</var>, so there is no timestamp field to grind, no
+    median-time-past rule, and no tolerance window to validate.
+  </p>
+
+  <figure class="figure">
+  
+    <svg class="fig-svg" viewBox="0 0 360 150" role="img" aria-labelledby="phases-t phases-d">
+  <title id="phases-t">The two phases of a slot</title>
+  <desc id="phases-d">
+    A bar for one 30-second slot. The first 6 seconds are the headers-only phase. From 6 to 30 seconds nodes pull the
+    top three bodies and serve the top five. At the boundary the winner is committed, or the null block is built.
+  </desc>
+  <rect class="fig-real" x="20" y="40" width="64" height="38"></rect>
+  <rect class="fig-box" x="84" y="40" width="256" height="38"></rect>
+  <text class="fig-text fig-strong" x="52" y="63" text-anchor="middle">headers</text>
+  <text class="fig-text" x="212" y="63" text-anchor="middle">bodies: pull top 3, serve top 5</text>
+  <line class="fig-line" x1="20" y1="78" x2="20" y2="90"></line>
+  <line class="fig-line" x1="84" y1="78" x2="84" y2="90"></line>
+  <line class="fig-line" x1="340" y1="78" x2="340" y2="90"></line>
+  <text class="fig-text fig-muted" x="20" y="106">0 s</text>
+  <text class="fig-text fig-muted" x="84" y="106" text-anchor="middle">6 s</text>
+  <text class="fig-text fig-muted" x="340" y="106" text-anchor="end">30 s</text>
+  <text class="fig-text" x="20" y="28">slot opens</text>
+  <text class="fig-text" x="340" y="28" text-anchor="end">boundary</text>
+  <text class="fig-text fig-muted" x="340" y="130" text-anchor="end">commit the winner, or build the null block</text>
+</svg>
+  
+  <figcaption>One 30-second slot: headers only for the first 6 seconds, then bodies for the top three candidates, and at the boundary the winner is committed or the null block is built.</figcaption>
+</figure>
+
+  <h2 id="roughtime">Where time comes from</h2>
+  <p>
+    A wrong clock puts a node in the wrong slot, so each node keeps its own <strong>verified clock</strong> from
+    Roughtime servers. Every response is authenticated end to end: the server's long-term key signs a delegation, the
+    delegated key signs the response, and the node's own request is bound into the signed reply, so a recorded answer
+    cannot be replayed.
+  </p>
+  <ul>
+    <li>
+      <strong>One vote per operator.</strong> Servers are queried in parallel. Each operator, counted by who holds the
+      keys rather than by address, casts one vote: the median of its own samples. Votes more than 2 seconds from the
+      median of votes are discarded, at least 3 voting operators must remain, and the median of what remains is adopted.
+      Extra servers under one operator add availability, never extra votes.
+    </li>
+    <li>
+      <strong>Step bound.</strong> A new median is accepted outright only within 5 seconds of where the node's clock
+      already is. A larger step, forward or backward, is held back until a second sync attempt agrees with it, so one
+      bad answer cannot move the clock but a node that is genuinely behind still catches up. A node's first sync after
+      boot is always applied.
+    </li>
+  </ul>
+
+  <h2 id="hardware-clock">The hardware clock between syncs</h2>
+  <p>
+    Between syncs a node projects verified time forward on the raw hardware oscillator, not on the system clock the
+    host's NTP daemon disciplines. That clock follows whatever the NTP daemon is told: a measured on-path NTP offset
+    walked an earlier design a full slot in about six minutes while its drift gauge read zero.
+  </p>
+  <p>
+    Raw oscillators run 30–100 ppm off on ordinary and cloud hosts, so the node learns its oscillator's rate from
+    successive syncs and corrects for it. Each sync may move the learned rate by at most 50 ppm, and the rate is clamped
+    at 250 ppm, so a steered quorum cannot install a large false rate in one step. A node syncs hourly while it learns
+    the rate, and every 4 hours once a sync confirms the rate to within 5 ppm.
+  </p>
+
+  <h2 id="mining-hold">No verified time, no blocks</h2>
+  <p>
+    A node that has never acquired a verified baseline does not sign blocks. Everything else, relaying, serving and
+    syncing, continues. An opt-out exists for the case where every configured server is down, and it is loud.
+  </p>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/slot-election/" rel="prev">Previous: Slot election</a>
+    <a href="/how-it-works/eligibility/" rel="next">Next: Eligibility</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been audited only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>
