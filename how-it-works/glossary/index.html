@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; manifest-src 'none'; worker-src 'none'; frame-src 'none'; upgrade-insecure-requests">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Glossary · Spek</title>
+    <meta name="description" content="The terms used on Spek's How it works pages, each defined once in plain words.">
+    <link rel="icon" href="/favicon-48.png" type="image/png" sizes="48x48">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/_astro/Base.Baff8jkI.css"></head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="wordmark" href="/" aria-label="Spek, home"><img class="wordmark-logo" src="/spek-logo.png" width="44" height="48" alt="">Spek</a>
+        <nav class="site-nav" aria-label="Primary">
+          <ul>
+            <li>
+                <a href="/how-it-works/" aria-current="page">How it works</a>
+              </li><li>
+                <a href="/stewardship/">Stewardship</a>
+              </li><li>
+                <a href="/security/">Security</a>
+              </li><li>
+                <a href="/social/">Social</a>
+              </li>
+          </ul>
+        </nav>
+        <button id="theme-toggle" class="theme-toggle" type="button" hidden>Theme</button>
+      </div>
+    </header>
+    <main id="main" class="wrap">
+      
+  <p class="breadcrumb"><a href="/how-it-works/">How it works</a></p>
+  <h1>Glossary</h1>
+  <div class="prose">
+    
+  <p class="page-intro">The terms these pages use, in alphabetical order.</p>
+  <dl class="glossary">
+    <dt id="beacon">Beacon</dt>
+    <dd>A random value for one epoch, read from the chain's election seed a full epoch before that epoch starts. Every draw in the epoch is scored against it. No one can predict it until its source epoch has been produced. See <a href="/how-it-works/slot-election/#beacon">The beacon</a>.</dd>
+
+    <dt id="checkpoint">Checkpoint</dt>
+    <dd>A block hash every 4,000 blocks that fixes history below it. A <em>hard checkpoint</em> is compiled into a release; a <em>pin file</em> adds newer ones between releases and must be signed by a threshold of checkpoint signers. A node with no history of its own trusts both. See <a href="/how-it-works/confirmations/#checkpoints">The checkpoint barrier</a>.</dd>
+
+    <dt id="confirmation">Confirmation</dt>
+    <dd>One more block on top of the block that holds a transaction, 30 seconds each. A transaction is confirmed, never settled: how many confirmations to wait depends on the attacker share you defend against. See <a href="/how-it-works/confirmations/">Confirmations</a>.</dd>
+
+    <dt id="draw">Draw</dt>
+    <dd>The one chance a funded stake address gets in a slot. It is a hash of the beacon, the height, the miner's key and its draw secret; the number it produces is its score.</dd>
+
+    <dt id="draw-secret">Draw secret</dt>
+    <dd>A value only the key owner can compute, unique for each height, that a header reveals (written <code>r_h</code>; the header fields keep the names <code>slot_reveal</code> and <code>slot_path</code>). It is checked against the horizon root.</dd>
+
+    <dt id="draw-secret-root">Draw secret root</dt>
+    <dd>A random 32-byte secret in the miner's key file, drawn from the operating system and independent of the signing key. Every draw secret is derived from it, and it is never published.</dd>
+
+    <dt id="election-seed">Election seed</dt>
+    <dd>A running value in which every block mixes in its winner's draw secret. Beacons are read from it.</dd>
+
+    <dt id="epoch">Epoch</dt>
+    <dd>1,440 slots, 12 hours. Each epoch has one beacon.</dd>
+
+    <dt id="equivocation">Equivocation</dt>
+    <dd>Signing two different headers for the same slot with one key. The key's entry for that slot is evicted and a compact proof is passed on.</dd>
+
+    <dt id="horizon-root">Horizon, horizon root</dt>
+    <dd>A horizon is 1,024 consecutive 3-day segments of a key's draw secrets, about 8.4 years. Its horizon root is the Merkle root of their chains, written <code>C</code>, built into the stake address before any beacon it will be drawn against exists. It fixes which draw secret is valid for each height. See <a href="/how-it-works/slot-election/#draw-secrets">Draw secrets</a>.</dd>
+
+    <dt id="launch-phase">Launch phase</dt>
+    <dd>The first 45 days, when eligibility comes from RandomX ticket records instead of coins.</dd>
+
+    <dt id="miner">Miner</dt>
+    <dd>A block producer. Mining here means submitting one candidate block per slot, not racing to find a hash.</dd>
+
+    <dt id="nothing-at-stake">Nothing at stake</dt>
+    <dd>The classic weakness of unbonded proof of stake: signing costs nothing and nothing can be slashed, so a key that held stake at a fork point can sign a branch from that point later, even after selling its coins. In Spek only restoration pins and checkpoints bound it.</dd>
+
+    <dt id="null-block">Null block</dt>
+    <dd>The block every node builds identically when no candidate for a slot validates. See <a href="/how-it-works/null-blocks/">Null blocks</a>.</dd>
+
+    <dt id="open-launch">Open launch</dt>
+    <dd>The public process that fills the genesis block with ticket records before the chain starts: the launch key every launch ticket is searched under, the sealed list of submissions, and the launch nonce that fixes the genesis. See <a href="/how-it-works/eligibility/#open-launch">The open launch</a>.</dd>
+
+    <dt id="opening-tranche">Opening tranche</dt>
+    <dd>The part of a genesis allocation spendable once coinbase maturity has passed: 3% of each founder's share and the stewardship fund's first 1,500,000 coins. Later tranches unlock year by year. See <a href="/stewardship/">Stewardship</a>.</dd>
+
+    <dt id="restoration-pin">Restoration pin</dt>
+    <dd>A running node's own checkpoint: the block below which it never reorganises its chain. It trails the tip by 33–67 hours.</dd>
+
+    <dt id="round-hash">Round hash</dt>
+    <dd>In the launch phase, the block hash that keys one round of the RandomX ticket search.</dd>
+
+    <dt id="roughtime">Roughtime</dt>
+    <dd>A protocol in which servers return authenticated time. A node keeps its verified clock from a quorum of independent operators. See <a href="/how-it-works/time/">Time and the clock</a>.</dd>
+
+    <dt id="score">Score</dt>
+    <dd>The number a draw produces: how far the draw's hash sits from the centre of the 256-bit hash space. The highest score whose full block validates wins the slot.</dd>
+
+    <dt id="settled">Settled and unsettled</dt>
+    <dd>A slot is unsettled while it is being mined and settled once it closes, 30 seconds later. The words describe slots only; a transaction is confirmed.</dd>
+
+    <dt id="slot">Slot</dt>
+    <dd>A 30-second timeslot. Its number is the block height, so a block's time follows from its height.</dd>
+
+    <dt id="stake-address">Stake address</dt>
+    <dd>The address built from a miner's key and one horizon root. Each horizon of a key has its own stake address.</dd>
+
+    <dt id="stake-output">Stake output</dt>
+    <dd>The one output at a stake address, worth at least a stake unit and old enough, that makes a header eligible. See <a href="/how-it-works/eligibility/">Eligibility</a>.</dd>
+
+    <dt id="stake-program">Stake program</dt>
+    <dd>The 32-byte form of a stake address that a launch-phase ticket names.</dd>
+
+    <dt id="stake-unit">Stake unit</dt>
+    <dd>One output worth at least the coin requirement: 80% of the block reward (40 coins while the reward is 50), never below 0.1 coin.</dd>
+
+    <dt id="ticket-record">Ticket record</dt>
+    <dd>In the first 45 days, a record written to the chain that proves a key's launch-phase work and makes it eligible.</dd>
+  </dl>
+
+  </div>
+  <nav class="page-nav" aria-label="How it works pages">
+    <a href="/how-it-works/design-choices/" rel="prev">Previous: Design choices</a>
+    <a href="/how-it-works/limitations/" rel="next">Next: Limitations</a>
+  </nav>
+
+    </main>
+    <footer class="site-footer">
+      <div class="wrap">
+        <p><em>Designed by the founders, implemented, tested and reviewed entirely by Claude Code.</em></p>
+        <p>The code has been reviewed only by AI models (Claude). No independent human audit has taken place. Anthropic, the maker of Claude, is not a partner in this project. <a href="/disclosures/">Disclosures</a></p>
+        <nav aria-label="Social media">
+          <ul class="footer-social">
+            <li><a href="https://x.com/SpekCoin" rel="me noopener">X (@SpekCoin)</a></li>
+          </ul>
+        </nav>
+      </div>
+    </footer>
+    <script src="/site.js" defer></script>
+  </body>
+</html>
